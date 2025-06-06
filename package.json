@@ -1,0 +1,40 @@
+{
+  "name": "i18n-scanner-rs",
+  "version": "0.0.6",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "i18n-scanner-rs.darwin-arm64.node",
+    "index.d.ts",
+    "index.js"
+  ],
+  "napi": {
+    "name": "i18n-scanner-rs",
+    "triples": {
+      "additional": [
+        "aarch64-apple-darwin"
+      ]
+    }
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.4",
+    "i18next": "^25.1.2",
+    "react-i18next": "^15.5.1"
+  },
+  "engines": {
+    "node": ">= 10"
+  },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "pnpm run build && napi prepublish -t npm",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "universal": "napi universal",
+    "version": "napi version"
+  },
+  "packageManager": "pnpm@8.15.9",
+  "repository": "git@github.com:Justinidlerz/i18n-scanner-rs.git",
+  "description": "An i18next scanner tool written in Rust, based on Oxc"
+}

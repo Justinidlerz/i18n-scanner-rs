@@ -1,0 +1,20 @@
+{
+  "name": "i18n-scanner-rs-darwin-x64",
+  "version": "0.0.6",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "i18n-scanner-rs.darwin-x64.node",
+  "files": [
+    "i18n-scanner-rs.darwin-x64.node"
+  ],
+  "description": "An i18next  scanner tool written in Rust, based on Oxc",
+  "license": "MIT",
+  "engines": {
+    "node": ">= 10"
+  },
+  "repository": "git@github.com:Justinidlerz/i18n-scanner-rs.git"
+}
