@@ -30,7 +30,7 @@
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
     "prepublishOnly": "pnpm run build && napi prepublish -t npm",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "cargo test",
     "universal": "napi universal",
     "version": "napi version"
   },
