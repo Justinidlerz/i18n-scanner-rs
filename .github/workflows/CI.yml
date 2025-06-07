@@ -77,8 +77,6 @@ jobs:
         shell: bash
       - uses: pnpm/action-setup@v4
         name: Install pnpm
-        with:
-          version: 10
       - name: Setup node x86
         if: matrix.settings.target == 'i686-pc-windows-msvc'
         run: pnpm config set supportedArchitectures.cpu "ia32"
