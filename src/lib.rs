@@ -1,5 +1,3 @@
-#![feature(let_chains)]
-
 mod analyzer;
 pub mod collector;
 mod node;
