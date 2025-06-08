@@ -79,6 +79,10 @@ jobs:
         shell: bash
       - uses: pnpm/action-setup@v4
         name: Install pnpm
+      - name: Test
+        if: matrix.settings.target == 'aarch64-apple-darwin'
+        shell: bash
+        run: cargo test
       - name: Setup node x86
         if: matrix.settings.target == 'i686-pc-windows-msvc'
         run: pnpm config set supportedArchitectures.cpu "ia32"
