@@ -20,7 +20,7 @@ I18n contents via passed entry file
 ## Usage
 
 ```ts
-import { scan } from 'i18n-scanner-rs'
+import { scan } from '@i18n-scanner-rs/main'
 
 const payload = {
   tsconfigPath: './tsconfig.json',

@@ -1,5 +1,5 @@
 {
-  "name": "i18n-scanner-rs-linux-x64-gnu",
+  "name": "@i18n-scanner-rs/main-linux-x64-gnu",
   "version": "0.1.0",
   "os": [
     "linux"
@@ -11,7 +11,7 @@
   "files": [
     "i18n-scanner-rs.linux-x64-gnu.node"
   ],
-  "description": "An i18next  scanner tool written in Rust, based on Oxc",
+  "description": "A superfast i18next scanner tool written in Rust, based on Oxc",
   "license": "MIT",
   "engines": {
     "node": ">= 10"

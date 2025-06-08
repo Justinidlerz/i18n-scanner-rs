@@ -1,5 +1,5 @@
 {
-  "name": "i18n-scanner-rs",
+  "name": "@i18n-scanner-rs/main",
   "version": "0.1.0",
   "main": "index.js",
   "types": "index.d.ts",
