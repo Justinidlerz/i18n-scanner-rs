@@ -1,4 +1,5 @@
 # I18n scanner rs
+[![CI](https://github.com/Justinidlerz/i18n-scanner-rs/actions/workflows/CI.yml/badge.svg)](https://github.com/Justinidlerz/i18n-scanner-rs/actions/workflows/CI.yml)
 
 A superfast i18next scanner tool written in Rust, based on [Oxc](https://github.com/oxc-project/oxc)
 The node.js API is implemented by [NAPI](https://github.com/napi-rs/napi-rs)
