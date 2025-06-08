@@ -19,8 +19,11 @@
   "license": "MIT",
   "devDependencies": {
     "@napi-rs/cli": "^2.18.4",
+    "@types/node": "^22.15.30",
+    "glob": "^11.0.2",
     "i18next": "^25.1.2",
-    "react-i18next": "^15.5.1"
+    "react-i18next": "^15.5.1",
+    "vitest": "^3.2.2"
   },
   "engines": {
     "node": ">= 10"
@@ -30,7 +33,7 @@
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
     "prepublishOnly": "pnpm run build && napi prepublish -t npm",
-    "test": "echo \"Test skipped\"",
+    "test": "vitest",
     "universal": "napi universal",
     "version": "napi version"
   },
