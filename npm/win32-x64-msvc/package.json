@@ -1,6 +1,6 @@
 {
   "name": "i18n-scanner-rs-win32-x64-msvc",
-  "version": "0.0.6",
+  "version": "0.1.0",
   "os": [
     "win32"
   ],
