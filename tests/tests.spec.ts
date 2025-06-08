@@ -1,5 +1,5 @@
 import {describe, it, expect} from "vitest";
-import {scan} from '..'
+import {scan} from '../index'
 import * as path from 'node:path'
 
 const root = path.join(__dirname, './fake-project');
