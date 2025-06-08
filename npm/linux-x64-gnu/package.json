@@ -16,7 +16,10 @@
   "engines": {
     "node": ">= 10"
   },
-  "repository": "git@github.com:Justinidlerz/i18n-scanner-rs.git",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/Justinidlerz/i18n-scanner-rs.git"
+  },
   "libc": [
     "glibc"
   ]
