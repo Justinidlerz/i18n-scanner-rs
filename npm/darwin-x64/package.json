@@ -1,6 +1,6 @@
 {
   "name": "i18n-scanner-rs-darwin-x64",
-  "version": "0.0.6",
+  "version": "0.1.0",
   "os": [
     "darwin"
   ],
