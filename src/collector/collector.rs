@@ -11,7 +11,7 @@ use std::fs;
 pub struct Collector {
   node_store: NodeStore,
   allocator: Allocator,
-  pub starling_namespaces: HashMap<String, Vec<String>>,
+  pub i18n_namespaces: HashMap<String, Vec<String>>,
 }
 
 impl Collector {
@@ -19,7 +19,7 @@ impl Collector {
     Self {
       node_store: nodes,
       allocator: Allocator::default(),
-      starling_namespaces: HashMap::new(),
+      i18n_namespaces: HashMap::new(),
     }
   }
 
@@ -44,11 +44,11 @@ impl Collector {
       walk::walk_program(&mut walker, &program);
 
       walker
-        .starling_namespaces
+        .i18n_namespaces
         .iter()
         .for_each(|(namespace, keys)| {
           self
-            .starling_namespaces
+            .i18n_namespaces
             .entry(namespace.to_string())
             .or_default()
             .extend(keys.iter().cloned());
@@ -61,7 +61,7 @@ impl Collector {
     let default = Vec::<String>::new();
 
     self
-      .starling_namespaces
+      .i18n_namespaces
       .get(namespace)
       .unwrap_or(&default)
       .clone()
@@ -77,7 +77,7 @@ mod tests {
   fn full_collect() {
     let (_, collector) = collect("index.tsx".into(), None);
 
-    assert_eq!(collector.starling_namespaces.len(), 4);
+    assert_eq!(collector.i18n_namespaces.len(), 4);
 
     assert_eq!(collector.get_keys("default").len(), 7);
     assert_eq!(collector.get_keys("namespace_1").len(), 2);

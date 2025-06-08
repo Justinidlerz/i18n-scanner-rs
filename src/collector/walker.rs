@@ -13,7 +13,7 @@ use std::rc::Rc;
 pub struct Walker<'a> {
   pub node: Rc<Node>,
   pub semantic: &'a Semantic<'a>,
-  pub starling_namespaces: HashMap<String, Vec<String>>,
+  pub i18n_namespaces: HashMap<String, Vec<String>>,
   pub post_collects: PostCollector,
   pub walk_utils: WalkerUtils<'a>,
 }
@@ -23,7 +23,7 @@ impl<'a> Walker<'a> {
     Self {
       node: node.clone(),
       semantic,
-      starling_namespaces: HashMap::new(),
+      i18n_namespaces: HashMap::new(),
       post_collects: PostCollector::new(),
       walk_utils: WalkerUtils::new(semantic, node.clone()),
     }
@@ -169,7 +169,7 @@ impl<'a> Walker<'a> {
 
   pub fn add_key(&mut self, namespace: &str, key: String) {
     self
-      .starling_namespaces
+      .i18n_namespaces
       .entry(namespace.to_string())
       .or_insert_with(Vec::new)
       .push(key);

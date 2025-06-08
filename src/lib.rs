@@ -61,7 +61,7 @@ pub fn scan(payload: Payload) -> HashMap<String, Vec<String>> {
 
   collector.collect_keys();
 
-  collector.starling_namespaces
+  collector.i18n_namespaces
 }
 
 #[allow(dead_code)]
@@ -96,6 +96,6 @@ mod tests {
     let mut collector = Collector::new(node_store);
     let keys = collector.collect_keys();
 
-    println!("{:?}", keys.starling_namespaces.get("default"));
+    println!("{:?}", keys.i18n_namespaces.get("default"));
   }
 }
