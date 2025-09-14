@@ -82,10 +82,10 @@ mod tests {
 
     assert_eq!(collector.i18n_namespaces.len(), 4);
 
-    assert_eq!(collector.get_keys("default").len(), 15);
+    assert_eq!(collector.get_keys("default").len(), 18);
     assert_eq!(collector.get_keys("namespace_1").len(), 2);
     assert_eq!(collector.get_keys("namespace_2").len(), 1);
-    assert_eq!(collector.get_keys("namespace_3").len(), 2);
+    assert_eq!(collector.get_keys("namespace_3").len(), 1);
   }
 
   key_match!(
@@ -159,11 +159,11 @@ mod tests {
     vec!["I18N_CODE_FROM_TEMPLATE_LITERAL"]
   );
   
-  // key_match!(
-  //   i18n_code_cross_file,
-  //   "I18nCodeCrossFile/Component.tsx".into(),
-  //   vec!["I18N_CODE_CROSS_FILE"]
-  // );
+  key_match!(
+    i18n_code_cross_file,
+    "I18nCodeCrossFile/Component.tsx".into(),
+    vec!["I18N_CODE_CROSS_FILE"]
+  );
 
   key_match!(
     namespace_import,
@@ -171,11 +171,11 @@ mod tests {
     vec!["NAMESPACE_IMPORT"]
   );
 
-  // key_match!(
-  //   wrap_use_translation,
-  //   "WrapUseTranslation/Component.tsx".into(),
-  //   vec!["WRAPPED_USE_TRANSLATION"]
-  // );
+  key_match!(
+    wrap_use_translation,
+    "WrapUseTranslation/Component.tsx".into(),
+    vec!["WRAPPED_USE_TRANSLATION"]
+  );
 
   key_match!(
     hoc_component,
@@ -195,10 +195,10 @@ mod tests {
     vec!["TRANSLATION_COMPONENT"]
   );
 
-  // key_match!(
-  //   i18n_code_dynamic,
-  //   "I18nCodeDynamic.tsx".into(),
-  //   vec!["I18N_CODE_DYNAMIC_hello", "I18N_CODE_DYNAMIC_world"]
-  // );
+  key_match!(
+    i18n_code_dynamic,
+    "I18nCodeDynamic.tsx".into(),
+    vec!["I18N_CODE_DYNAMIC_hello", "I18N_CODE_DYNAMIC_world"]
+  );
 }
         
