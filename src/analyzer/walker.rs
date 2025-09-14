@@ -10,6 +10,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
+use log::debug;
 
 pub struct Walker<'a> {
   resolver: Rc<Resolver>,
@@ -96,10 +97,10 @@ impl<'a> Walker<'a> {
               .or_insert_with(|| path_str.to_string());
           })
       } else {
-        println!("[i18n-scanner-rs] failed to format path: {}", source.value)
+        debug!("[i18n-scanner-rs] failed to format path: {}", source.value)
       }
     } else {
-      println!(
+      debug!(
         "[i18n-scanner-rs] failed to resolve: {} in {}",
         source.value, self.node.file_path
       );

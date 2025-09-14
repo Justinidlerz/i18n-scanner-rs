@@ -11,6 +11,7 @@ use crate::node::node_store::NodeStore;
 use analyzer::analyzer::Analyzer;
 use collector::collector::Collector;
 use std::collections::HashMap;
+use log::info;
 
 #[napi(object)]
 pub struct Payload {
@@ -32,6 +33,11 @@ pub struct Payload {
 ///    or bypass from another function wrapped by the i18n function
 #[napi]
 pub fn scan(payload: Payload) -> HashMap<String, Vec<String>> {
+  // Initialize logger only once
+  std::sync::Once::new().call_once(|| {
+    env_logger::init();
+  });
+  
   if payload.entry_paths.len() < 1 {
     panic!("entry_paths is empty");
   }
@@ -52,7 +58,7 @@ pub fn scan(payload: Payload) -> HashMap<String, Vec<String>> {
     analyzer.analyze(entry.clone(), None);
   });
 
-  println!(
+  info!(
     "[i18n-scanner-rs] found {} modules includes i18n",
     node_store.get_all_i18n_nodes().len()
   );
@@ -73,6 +79,8 @@ mod tests {
   use std::path::PathBuf;
   use std::rc::Rc;
   use crate::node::node::Node;
+  use log::info;
+  
 
   #[test]
   fn case_test() {
@@ -96,6 +104,6 @@ mod tests {
     let mut collector = Collector::new(node_store);
     let keys = collector.collect_keys();
 
-    println!("{:?}", keys.i18n_namespaces.get("default"));
+    info!("{:?}", keys.i18n_namespaces.get("default"));
   }
 }

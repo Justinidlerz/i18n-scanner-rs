@@ -22,15 +22,27 @@ impl<'a> Visit<'a> for Walker<'a> {
                   I18nType::ObjectMemberT => {
                     self.read_object_member_t(s.local.symbol_id(), member.ns.clone());
                   }
-                  I18nType::TransComp => {}
-                  I18nType::TranslationComp => {}
-                  I18nType::HocWrapper => {}
+                  I18nType::TransComp => {
+                    self.read_trans_component(s.local.symbol_id(), member.ns.clone());
+                  }
+                  I18nType::TranslationComp => {
+                    self.read_translation_component(s.local.symbol_id(), member.ns.clone());
+                  }
+                  I18nType::HocWrapper => {
+                    self.read_hoc_wrapper(s.local.symbol_id(), member.ns.clone());
+                  }
                 }
               }
             }
-            ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => {
-              // TODO: Handle namespace import,
-              //       find out the namespace members and handle it like import specifier
+            ImportDeclarationSpecifier::ImportNamespaceSpecifier(ns_spec) => {
+              // Handle namespace import
+              // For namespace imports like `import * as i18n from 'react-i18next'`
+              // We need to handle calls like `i18n.useTranslation()` and `i18n.t()`
+              if let Some(i18n_source) = self.node.get_importing_node(&it.source.value) {
+                let members = i18n_source.get_exporting_members();
+                // Handle the namespace symbol
+                self.read_namespace_import(ns_spec.local.symbol_id(), &members);
+              }
             }
             _ => {}
           }
