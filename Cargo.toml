@@ -2,30 +2,29 @@
 edition = "2021"
 name = "i18n-scanner-rs"
 version = "0.0.0"
-rust-version = "1.87.0"
+rust-version = "1.89.0"
 
 [lib]
 crate-type = ["cdylib"]
-cargo-features = ["edition2024"]
 
 [dependencies]
 # Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
-napi = { version = "2.12.2", default-features = false, features = ["napi4"] }
-napi-derive = "2.12.2"
-oxc_allocator = "0.72.2"
-oxc_ast = "0.72.2"
-oxc_ast_visit = "0.72.2"
-oxc_parser = "0.72.2"
-oxc_resolver = "11.2.0"
-oxc_semantic = "0.72.2"
-oxc_syntax = "0.72.2"
-regex = { version = "1.11.1", features = [] }
-oxc_minifier = "0.72.2"
+napi = { version = "3.3.0", default-features = false, features = ["napi4"] }
+napi-derive = "3.2.5"
+oxc_allocator = "0.73.0"
+oxc_ast = "0.73.0"
+oxc_ast_visit = "0.73.0"
+oxc_parser = "0.73.0"
+oxc_resolver = "11.4.0"
+oxc_semantic = "0.73.0"
+oxc_syntax = "0.73.0"
+regex = { version = "1.11.2", features = [] }
+oxc_minifier = "0.73.0"
 log = "0.4"
 env_logger = "0.11"
 
 [build-dependencies]
-napi-build = "2.0.1"
+napi-build = "2.2.3"
 
 [profile.release]
 lto = true

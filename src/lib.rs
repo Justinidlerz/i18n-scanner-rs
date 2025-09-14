@@ -33,10 +33,8 @@ pub struct Payload {
 ///    or bypass from another function wrapped by the i18n function
 #[napi]
 pub fn scan(payload: Payload) -> HashMap<String, Vec<String>> {
-  // Initialize logger only once
-  std::sync::Once::new().call_once(|| {
-    env_logger::init();
-  });
+  // Initialize logger - use try_init to avoid panic if already initialized
+  let _ = env_logger::try_init();
   
   if payload.entry_paths.len() < 1 {
     panic!("entry_paths is empty");
@@ -77,8 +75,6 @@ mod tests {
   use crate::collector::collector::Collector;
   use crate::node::node_store::NodeStore;
   use std::path::PathBuf;
-  use std::rc::Rc;
-  use crate::node::node::Node;
   use log::info;
   
 

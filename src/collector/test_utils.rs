@@ -42,10 +42,8 @@ macro_rules! key_match {
 }
 
 pub fn collect(entry: String, extend_packages: Option<Vec<I18nPackage>>) -> (Analyzer, Collector) {
-  // Initialize logger for tests
-  std::sync::Once::new().call_once(|| {
-    env_logger::init();
-  });
+  // Initialize logger for tests - use try_init to avoid panic if already initialized
+  let _ = env_logger::try_init();
   
   let (analyzer, node_store) = analyze(entry, extend_packages);
 

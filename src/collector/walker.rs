@@ -36,15 +36,14 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) else {
-          return;
-        };
-        match node.kind() {
-          AstKind::CallExpression(call) => {
-            self.read_t_arguments(call, namespace.clone());
+        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
+          match node.kind() {
+            AstKind::CallExpression(call) => {
+              self.read_t_arguments(call, namespace.clone());
+            }
+            // TODO: handle bypass?
+            _ => {}
           }
-          // TODO: handle bypass?
-          _ => {}
         }
       })
   }
@@ -54,9 +53,7 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) else {
-          return;
-        };
+        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
 
         match node.kind() {
           // member call case
@@ -79,6 +76,7 @@ impl<'a> Walker<'a> {
           }
           _ => {}
         }
+        }
       })
   }
 
@@ -87,13 +85,9 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(s.local.symbol_id.get().unwrap())
       .for_each(|ref_item| {
-        let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) else {
-          return;
-        };
-        // only call useTranslation method but not assignment
-        let Some(assign_node) = self.semantic.nodes().parent_node(node.id()) else {
-          return;
-        };
+        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
+          // only call useTranslation method but not assignment
+          if let Some(assign_node) = self.semantic.nodes().parent_node(node.id()) {
 
         // const xyz = useTranslation();
         let AstKind::VariableDeclarator(var) = assign_node.kind() else {
@@ -122,6 +116,8 @@ impl<'a> Walker<'a> {
             self.read_object_member_t(ident.symbol_id(), namespace)
           }
           _ => {}
+        }
+          }
         }
       });
   }
@@ -185,9 +181,7 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) else {
-          return;
-        };
+        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
         match node.kind() {
           // Handle member expressions like i18n.useTranslation() or i18n.t()
           oxc_ast::AstKind::MemberExpression(member) => {
@@ -217,6 +211,7 @@ impl<'a> Walker<'a> {
           }
           _ => {}
         }
+        }
       });
   }
 
@@ -238,9 +233,7 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) else {
-          return;
-        };
+        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
         match node.kind() {
           oxc_ast::AstKind::Function(func) => {
             if let Some(body) = &func.body {
@@ -260,6 +253,7 @@ impl<'a> Walker<'a> {
             }
           }
           _ => {}
+        }
         }
       });
   }
@@ -369,37 +363,44 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) else {
-          return;
-        };
-        // Check if this is a JSX element name
-        if let Some(_jsx_element_name) = node.kind().as_jsx_element_name() {
-          if let Some(parent_node) = self.semantic.nodes().parent_node(node.id()) {
-            if let Some(jsx_element) = parent_node.kind().as_jsx_element() {
-              self.read_trans_jsx_element(jsx_element, defined_ns.clone());
-            } else {
-              // Try to go up one more level
-              if let Some(grandparent_node) = self.semantic.nodes().parent_node(parent_node.id()) {
-                if let Some(jsx_element) = grandparent_node.kind().as_jsx_element() {
-                  self.read_trans_jsx_element(jsx_element, defined_ns.clone());
+        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
+          // Check if this is a JSX element name
+          if let Some(_jsx_element) = node.kind().as_jsx_element() {
+            if let Some(parent_node) = self.semantic.nodes().parent_node(node.id()) {
+              if let Some(jsx_element) = parent_node.kind().as_jsx_element() {
+                self.read_trans_jsx_element(jsx_element, defined_ns.clone());
+              } else {
+                // Try to go up one more level
+                if let Some(grandparent_node) = self.semantic.nodes().parent_node(parent_node.id()) {
+                  if let Some(jsx_element) = grandparent_node.kind().as_jsx_element() {
+                    self.read_trans_jsx_element(jsx_element, defined_ns.clone());
+                  }
                 }
               }
             }
-          }
-        } else {
-          match node.kind() {
+          } else {
+            match node.kind() {
             // Handle JSX elements like <Trans i18nKey="key" />
             oxc_ast::AstKind::JSXElement(jsx_element) => {
               self.read_trans_jsx_element(jsx_element, defined_ns.clone());
             }
+            // Handle JSX opening elements like <Trans i18nKey="key">
+            oxc_ast::AstKind::JSXOpeningElement(opening_element) => {
+              self.read_trans_jsx_opening_element(opening_element, defined_ns.clone());
+            }
             _ => {}
           }
+        }
         }
       });
   }
 
   pub fn read_trans_jsx_element(&mut self, jsx_element: &oxc_ast::ast::JSXElement, defined_ns: Option<String>) {
     let opening_element = &jsx_element.opening_element;
+    self.read_trans_jsx_opening_element(opening_element, defined_ns);
+  }
+
+  pub fn read_trans_jsx_opening_element(&mut self, opening_element: &oxc_ast::ast::JSXOpeningElement, defined_ns: Option<String>) {
     // Look for i18nKey prop
     for attribute in &opening_element.attributes {
       if let oxc_ast::ast::JSXAttributeItem::Attribute(attr) = attribute {
@@ -423,31 +424,39 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) else {
-          return;
-        };
-        // Check if this is a JSX element name
-        if let Some(_jsx_element_name) = node.kind().as_jsx_element_name() {
-          if let Some(parent_node) = self.semantic.nodes().parent_node(node.id()) {
-            if let Some(jsx_element) = parent_node.kind().as_jsx_element() {
-              self.read_translation_jsx_element(jsx_element, defined_ns.clone());
-            } else {
-              // Try to go up one more level
-              if let Some(grandparent_node) = self.semantic.nodes().parent_node(parent_node.id()) {
-                if let Some(jsx_element) = grandparent_node.kind().as_jsx_element() {
-                  self.read_translation_jsx_element(jsx_element, defined_ns.clone());
+        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
+          // Check if this is a JSX element name
+          if let Some(_jsx_element) = node.kind().as_jsx_element() {
+            if let Some(parent_node) = self.semantic.nodes().parent_node(node.id()) {
+              if let Some(jsx_element) = parent_node.kind().as_jsx_element() {
+                self.read_translation_jsx_element(jsx_element, defined_ns.clone());
+              } else {
+                // Try to go up one more level
+                if let Some(grandparent_node) = self.semantic.nodes().parent_node(parent_node.id()) {
+                  if let Some(jsx_element) = grandparent_node.kind().as_jsx_element() {
+                    self.read_translation_jsx_element(jsx_element, defined_ns.clone());
+                  }
                 }
               }
             }
-          }
-        } else {
-          match node.kind() {
+          } else {
+            match node.kind() {
             // Handle JSX elements like <Translation>{(t) => <p>{t('key')}</p>}</Translation>
             oxc_ast::AstKind::JSXElement(jsx_element) => {
               self.read_translation_jsx_element(jsx_element, defined_ns.clone());
             }
+            // Handle JSX opening elements like <Translation>
+            oxc_ast::AstKind::JSXOpeningElement(_opening_element) => {
+              // Need to find the parent JSX element to get the children
+              if let Some(parent_node) = self.semantic.nodes().parent_node(node.id()) {
+                if let oxc_ast::AstKind::JSXElement(jsx_element) = parent_node.kind() {
+                  self.read_translation_jsx_element(jsx_element, defined_ns.clone());
+                }
+              }
+            }
             _ => {}
           }
+        }
         }
       });
   }
@@ -540,15 +549,14 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) else {
-          return;
-        };
+        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
         match node.kind() {
           // Handle call expressions like withTranslation()(Component)
           oxc_ast::AstKind::CallExpression(call) => {
             self.read_hoc_call_expression(call, defined_ns.clone(), node.id());
           }
           _ => {}
+        }
         }
       });
   }
@@ -605,9 +613,7 @@ impl<'a> Walker<'a> {
         .semantic
         .symbol_references(symbol_id)
         .for_each(|ref_item| {
-          let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) else {
-            return;
-          };
+          if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
           debug!("Component reference node kind: {:?}", node.kind());
           match node.kind() {
             oxc_ast::AstKind::Function(func) => {
@@ -641,6 +647,7 @@ impl<'a> Walker<'a> {
               debug!("Found argument, skipping as it doesn't contain component definition");
             }
             _ => {}
+          }
           }
         });
     }

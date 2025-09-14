@@ -22,7 +22,7 @@
 ///
 /// Those 6 types are calls `t` method to translate except `TransComp`
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[napi(string_enum)]
 pub enum I18nType {
   Hook,
