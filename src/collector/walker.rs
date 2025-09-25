@@ -93,39 +93,10 @@ impl<'a> Walker<'a> {
           if let AstKind::CallExpression(call) = node.kind() {
             // This is a direct call to the hook, check if it's a custom i18n hook
             log::debug!("Found hook call: {}", s.imported.name());
-            if self.is_custom_hook_call(call, &s.imported.name()) {
+            if self.is_custom_hook_call(call, &s.imported.name(), defined_ns.as_deref()) {
               log::debug!("Handling custom hook call: {}", s.imported.name());
               self.handle_custom_hook_call(call, defined_ns.clone());
               return;
-            }
-          }
-          
-          // Check if this is a custom hook that returns a t function
-          if let Some(assign_node) = self.semantic.nodes().parent_node(node.id()) {
-            if let AstKind::VariableDeclarator(var) = assign_node.kind() {
-              // Check if this hook returns a t function with a specific namespace
-              if let Some(namespace) = self.detect_custom_hook_namespace(&s.imported.name()) {
-                log::debug!("Found custom hook with namespace: {} -> {}", s.imported.name(), namespace);
-                
-                match &var.id.kind {
-                  // const { t } = useFeTranslation();
-                  BindingPatternKind::ObjectPattern(obj) => obj.properties.iter().for_each(|prop| {
-                    if let PropertyKey::StaticIdentifier(key) = &prop.key {
-                      if key.name == "t" {
-                        if let BindingPatternKind::BindingIdentifier(ident) = &prop.value.kind {
-                          self.read_t(ident.symbol_id(), Some(namespace.clone()));
-                        }
-                      }
-                    }
-                  }),
-                  // const trans = useFeTranslation();
-                  BindingPatternKind::BindingIdentifier(ident) => {
-                    self.read_object_member_t(ident.symbol_id(), Some(namespace.clone()))
-                  }
-                  _ => {}
-                }
-                return;
-              }
             }
           }
           
@@ -977,26 +948,67 @@ impl<'a> Walker<'a> {
   }
 
   fn detect_custom_hook_namespace(&self, hook_name: &str) -> Option<String> {
-    // Detect custom hooks that return t functions with specific namespaces
-    // This is a simplified approach for the test case
-    match hook_name {
-      "useFeTranslation" => Some("namespace_3".to_string()),
-      _ => None,
-    }
+    // Detect custom hooks by analyzing their function bodies and extracting
+    // the namespace argument from internal useTranslation calls.
+    self
+      .semantic
+      .nodes()
+      .iter()
+      .find_map(|node| match node.kind() {
+        AstKind::VariableDeclarator(var) => {
+          let Some(init) = &var.init else {
+            return None;
+          };
+
+          let matches_name = matches!(
+            &var.id.kind,
+            BindingPatternKind::BindingIdentifier(ident) if ident.name == hook_name
+          );
+
+          if !matches_name {
+            return None;
+          }
+
+          match init {
+            Expression::ArrowFunctionExpression(func) => self.detect_hook_namespace(&func.body),
+            Expression::FunctionExpression(func) => func
+              .body
+              .as_ref()
+              .and_then(|body| self.detect_hook_namespace(body)),
+            _ => None,
+          }
+        }
+        AstKind::Function(function) => function.id.as_ref().and_then(|ident| {
+          if ident.name == hook_name {
+            function
+              .body
+              .as_ref()
+              .and_then(|body| self.detect_hook_namespace(body))
+          } else {
+            None
+          }
+        }),
+        _ => None,
+      })
   }
 
-  fn is_custom_hook_call(&self, call: &CallExpression, hook_name: &str) -> bool {
+  fn is_custom_hook_call(
+    &self,
+    call: &CallExpression,
+    hook_name: &str,
+    defined_namespace: Option<&str>,
+  ) -> bool {
     // Check if this hook is a custom i18n hook by looking at its implementation
     // Only treat hooks as custom if they take arguments and transform them
     // Hooks that return t functions with specific namespaces should be processed
     // by the namespace detection logic, not as custom hook calls
     let is_not_use_translation = hook_name != "useTranslation";
     let has_arguments = call.arguments.len() > 0;
-    let has_namespace = self.detect_custom_hook_namespace(hook_name).is_some();
-    
-    log::debug!("is_custom_hook_call: {} - is_not_use_translation: {}, has_arguments: {}, has_namespace: {}", 
+    let has_namespace = defined_namespace.is_some();
+
+    log::debug!("is_custom_hook_call: {} - is_not_use_translation: {}, has_arguments: {}, has_namespace: {}",
                 hook_name, is_not_use_translation, has_arguments, has_namespace);
-    
+
     // Don't treat hooks with namespaces as custom hook calls - they should be handled
     // by the namespace detection logic instead
     is_not_use_translation && has_arguments && !has_namespace
