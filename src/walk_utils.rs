@@ -57,10 +57,21 @@ impl<'a> WalkerUtils<'a> {
             AstKind::ImportSpecifier(import_spec) => {
               // Handle key import cross file
               let imported_name = import_spec.imported.name();
-              // Try to resolve the actual value from the imported module
-              if let Some(imported_value) = self.resolve_imported_value(&imported_name) {
-                return Some(imported_value);
+              log::debug!("Found import specifier for: {}", imported_name);
+              
+              // Find the import declaration to get the source
+              if let Some(parent_node) = self.semantic.nodes().parent_node(node.id()) {
+                if let AstKind::ImportDeclaration(import_decl) = parent_node.kind() {
+                  let source = import_decl.source.value.as_str();
+                  log::debug!("Import source: {}", source);
+                  
+                  // Try to resolve the actual value from the imported module
+                  if let Some(imported_value) = self.resolve_imported_value_from_source(source, &imported_name) {
+                    return Some(imported_value);
+                  }
+                }
               }
+              
               // Fallback to the imported name
               return Some(imported_name.to_string());
             }
@@ -184,18 +195,93 @@ impl<'a> WalkerUtils<'a> {
     }
   }
 
-  pub fn resolve_imported_value(&self, _imported_name: &str) -> Option<String> {
-    // Try to resolve cross-file imports by looking at the current node's imports
-    // This is a simplified implementation that works with the existing infrastructure
+  pub fn resolve_imported_value(&self, imported_name: &str) -> Option<String> {
+    // Legacy method - kept for compatibility
+    log::debug!("Trying to resolve imported value: {}", imported_name);
     
-    // First, we need to find which import declaration this imported_name comes from
-    // Then get the importing node and look for the exported constant
+    // For now, let's try to resolve by checking if there's an importing node for this specifier
+    if let Some(importing_node) = self.node.get_importing_node(imported_name) {
+      log::debug!("Found importing node: {}", importing_node.file_path);
+      let result = self.resolve_exported_constant_value(&importing_node.file_path, imported_name);
+      log::debug!("Resolved value: {:?}", result);
+      return result;
+    } else {
+      log::debug!("No importing node found for: {}", imported_name);
+    }
     
-    // For now, we'll try a simple approach: look through all importing nodes
-    // and see if any of them export this constant
-    
-    // This is still a TODO that requires more complex implementation
-    // involving AST parsing of imported files to find exported constants
     None
+  }
+
+  pub fn resolve_imported_value_from_source(&self, source: &str, imported_name: &str) -> Option<String> {
+    // Resolve imported value given the import source and the imported member name
+    log::debug!("Trying to resolve imported value '{}' from source '{}'", imported_name, source);
+    
+    // Get the importing node using the source path
+    if let Some(importing_node) = self.node.get_importing_node(source) {
+      log::debug!("Found importing node: {}", importing_node.file_path);
+      let result = self.resolve_exported_constant_value(&importing_node.file_path, imported_name);
+      log::debug!("Resolved value: {:?}", result);
+      return result;
+    } else {
+      log::debug!("No importing node found for source: {}", source);
+    }
+    
+    None
+  }
+
+  fn resolve_exported_constant_value(&self, file_path: &str, constant_name: &str) -> Option<String> {
+    use oxc_allocator::Allocator;
+    use oxc_parser::Parser;
+    use oxc_ast::ast::SourceType;
+    use std::fs;
+
+    // Read the file content
+    let source_text = fs::read_to_string(file_path).ok()?;
+    
+    // Parse the file
+    let allocator = Allocator::default();
+    let source_type = SourceType::from_path(file_path).unwrap_or_default();
+    let parser = Parser::new(&allocator, &source_text, source_type);
+    let program = parser.parse().program;
+    
+    // Look for export const declarations
+    for stmt in &program.body {
+      match stmt {
+        oxc_ast::ast::Statement::ExportNamedDeclaration(export_decl) => {
+          if let Some(decl) = &export_decl.declaration {
+            if let oxc_ast::ast::Declaration::VariableDeclaration(var_decl) = decl {
+              for declarator in &var_decl.declarations {
+                if let oxc_ast::ast::BindingPatternKind::BindingIdentifier(ident) = &declarator.id.kind {
+                  if ident.name == constant_name {
+                    // Found the constant, try to extract its value
+                    if let Some(init) = &declarator.init {
+                      return self.extract_constant_value(init);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        _ => {}
+      }
+    }
+    
+    None
+  }
+
+  fn extract_constant_value(&self, expr: &Expression) -> Option<String> {
+    match expr {
+      Expression::StringLiteral(s) => Some(s.value.to_string()),
+      Expression::TemplateLiteral(tpl) => {
+        // Handle simple template literals
+        if tpl.quasis.len() == 1 && tpl.expressions.is_empty() {
+          Some(tpl.quasis[0].value.raw.to_string())
+        } else {
+          None // Complex template literals not supported yet
+        }
+      }
+      _ => None,
+    }
   }
 }

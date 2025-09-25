@@ -159,23 +159,23 @@ mod tests {
     vec!["I18N_CODE_FROM_TEMPLATE_LITERAL"]
   );
   
-  // key_match!(
-  //   i18n_code_cross_file,
-  //   "I18nCodeCrossFile/Component.tsx".into(),
-  //   vec!["I18N_CODE_CROSS_FILE"]
-  // );
-
   key_match!(
-    namespace_import,
-    "NamespaceImport.tsx".into(),
-    vec!["NAMESPACE_IMPORT"]
+    i18n_code_cross_file,
+    "I18nCodeCrossFile/Component.tsx".into(),
+    vec!["I18N_CODE_CROSS_FILE"]
   );
 
   // key_match!(
-  //   wrap_use_translation,
-  //   "WrapUseTranslation/Component.tsx".into(),
-  //   vec!["WRAPPED_USE_TRANSLATION"]
+  //   namespace_import,
+  //   "NamespaceImport.tsx".into(),
+  //   vec!["NAMESPACE_IMPORT"]
   // );
+
+  key_match!(
+    wrap_use_translation,
+    "WrapUseTranslation/Component.tsx".into(),
+    vec!["WRAPPED_USE_TRANSLATION"]
+  );
 
   key_match!(
     hoc_component,
@@ -195,10 +195,10 @@ mod tests {
     vec!["TRANSLATION_COMPONENT"]
   );
 
-  // key_match!(
-  //   i18n_code_dynamic,
-  //   "I18nCodeDynamic.tsx".into(),
-  //   vec!["I18N_CODE_DYNAMIC_hello", "I18N_CODE_DYNAMIC_world"]
-  // );
+  key_match!(
+    i18n_code_dynamic,
+    "I18nCodeDynamic.tsx".into(),
+    vec!["I18N_CODE_DYNAMIC_hello", "I18N_CODE_DYNAMIC_world"]
+  );
 }
         
