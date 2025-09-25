@@ -139,24 +139,29 @@ impl<'a> Walker<'a> {
     let Some(arg) = call.arguments.get(0) else {
       return;
     };
-    let key = arg
-      .as_expression()
-      .and_then(|expr| self.walk_utils.read_str_expression(&expr));
+    let ns = self.resolve_namespace(call, namespace);
 
-    let Some(key) = key else {
-      // If we can't resolve the key, check if this is a dynamic key pattern
-      if let Some(expr) = arg.as_expression() {
-        if let Some(dynamic_keys) = self.try_resolve_dynamic_keys(expr) {
-          for dynamic_key in dynamic_keys {
-            self.add_key(&"default".to_string(), dynamic_key);
-          }
-          return;
-        }
-      }
+    let Some(expr) = arg.as_expression() else {
       return;
     };
 
-    let ns = call
+    if let Some(key) = self.walk_utils.read_str_expression(expr) {
+      // Add the key directly without any hardcoded pattern matching
+      log::debug!("Adding key: '{}' to namespace: '{}'", key, ns);
+      self.add_key(&ns, key);
+      return;
+    }
+
+    // If we can't resolve the key, check if this is a dynamic key pattern
+    if let Some(dynamic_keys) = self.try_resolve_dynamic_keys(expr) {
+      for dynamic_key in dynamic_keys {
+        self.add_key(&ns, dynamic_key);
+      }
+    }
+  }
+
+  fn resolve_namespace(&self, call: &CallExpression, namespace: Option<String>) -> String {
+    call
       .arguments
       .get(1)
       .and_then(|arg| arg.as_expression())
@@ -181,12 +186,8 @@ impl<'a> Walker<'a> {
           None
         }
       })
-      .or_else(|| namespace.clone())
-      .unwrap_or_else(|| "default".to_string());
-
-    // Add the key directly without any hardcoded pattern matching
-    log::debug!("Adding key: '{}' to namespace: '{}'", key, ns);
-    self.add_key(&ns, key);
+      .or(namespace)
+      .unwrap_or_else(|| "default".to_string())
   }
 
 
