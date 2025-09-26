@@ -1,6 +1,7 @@
 use crate::analyzer::analyzer::Analyzer;
 use crate::node::i18n_types::{I18nMember, I18nType};
 use crate::node::node::Node;
+use std::mem::{self, Discriminant};
 use std::path::Path;
 use std::rc::Rc;
 
@@ -13,10 +14,7 @@ use std::rc::Rc;
 /// - withTranslation: the i18n HOC function
 ///
 /// and we don't handle other exposed methods from this package
-pub static PRESET_I18N_PACKAGES: &[&str] = &[
-  "i18next",
-  "react-i18next",
-];
+pub static PRESET_I18N_PACKAGES: &[&str] = &["i18next", "react-i18next"];
 
 pub static PRESET_I18N_MEMBERS: &[(&str, I18nType)] = &[
   // Special symbol import as namespace
@@ -101,26 +99,53 @@ impl Analyzer {
     extend_packages: Option<Vec<I18nPackage>>,
   ) -> Vec<I18nPackage> {
     let basename = Path::new(entry_path)
-        .parent()
-        .unwrap_or_else(|| Path::new("."));
-    
-    let mut packages = extend_packages.and_then(|packages| {
-      let mut pkgs: Vec<I18nPackage> = vec![];
-      for pkg in &packages {
-        if let Ok(res) = self.resolver.resolve(basename, &pkg.package_path) {
-          if let Some(path_str) = res.path().to_str() {
-            pkgs.push(I18nPackage {
-              package_path: path_str.to_string(),
-              members: pkg.members.clone(),
-            });
+      .parent()
+      .unwrap_or_else(|| Path::new("."));
+
+    let mut packages = extend_packages
+      .and_then(|packages| {
+        let mut pkgs: Vec<I18nPackage> = vec![];
+        for pkg in &packages {
+          if let Ok(res) = self.resolver.resolve(basename, &pkg.package_path) {
+            if let Some(path_str) = res.path().to_str() {
+              pkgs.push(I18nPackage {
+                package_path: path_str.to_string(),
+                members: pkg.members.clone(),
+              });
+            }
           }
         }
-      }
-      Some(pkgs)
-    }).unwrap_or_else(|| Vec::new());
+        Some(pkgs)
+      })
+      .unwrap_or_else(|| Vec::new());
 
     packages.extend(self.make_preset_i18n_packages(basename));
 
     packages
   }
+}
+
+fn discriminant_of(member_type: &I18nType) -> Discriminant<I18nType> {
+  mem::discriminant(member_type)
+}
+
+pub fn is_preset_member_name(name: &str, member_type: &I18nType) -> bool {
+  let discriminant = discriminant_of(member_type);
+
+  PRESET_I18N_MEMBERS
+    .iter()
+    .any(|(preset_name, preset_type)| {
+      *preset_name == name && discriminant_of(preset_type) == discriminant
+    })
+}
+
+pub fn preset_member_names(member_type: &I18nType) -> Vec<&'static str> {
+  let discriminant = discriminant_of(member_type);
+
+  PRESET_I18N_MEMBERS
+    .iter()
+    .filter_map(|(name, preset_type)| {
+      (discriminant_of(preset_type) == discriminant).then_some(*name)
+    })
+    .collect()
 }
