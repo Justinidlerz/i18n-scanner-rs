@@ -24,7 +24,7 @@
     "glob": "^11.0.3",
     "i18next": "^25.5.2",
     "react-i18next": "^15.7.4",
-    "vitest": "3.1.4"
+    "vitest": "3.2.4"
   },
   "engines": {
     "node": ">= 10"
@@ -41,9 +41,6 @@
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/Justinidlerz/i18n-scanner-rs.git"
-  },
-  "resolutions": {
-    "tinypool": "1.0.2"
   },
   "description": "A superfast i18next scanner tool written in Rust, based on Oxc",
   "packageManager": "pnpm@10.0.0+sha512.b8fef5494bd3fe4cbd4edabd0745df2ee5be3e4b0b8b08fa643aa3e4c6702ccc0f00d68fa8a8c9858a735a0032485a44990ed2810526c875e416f001b17df12b"
