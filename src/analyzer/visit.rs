@@ -1,10 +1,9 @@
 use super::walker::Walker;
 use crate::node::i18n_types::I18nMember;
-use oxc_ast::ast::Expression::StringLiteral;
 use oxc_ast::ast::{
   ArrayPattern, BindingPatternKind, Declaration, ExportAllDeclaration, ExportDefaultDeclaration,
-  ExportNamedDeclaration, ImportDeclaration, ImportDeclarationSpecifier, ImportExpression,
-  ModuleExportName, ObjectPattern,
+  ExportNamedDeclaration, Expression, ImportDeclaration, ImportDeclarationSpecifier,
+  ImportExpression, ModuleExportName, ObjectPattern,
 };
 use oxc_ast::AstKind;
 use oxc_ast_visit::Visit;
@@ -13,7 +12,7 @@ impl<'a> Visit<'a> for Walker<'a> {
   // import('xyz')
   fn visit_import_expression(&mut self, it: &ImportExpression<'a>) {
     match &it.source {
-      StringLiteral(source) => {
+      Expression::StringLiteral(source) => {
         // we assume doesn't import 'i18next' from other packages
         // doesn't handle dynamic import specifiers
         self.resolve_import(source, vec![]);

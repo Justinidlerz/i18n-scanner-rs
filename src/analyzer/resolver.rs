@@ -1,7 +1,7 @@
+use log::debug;
 use oxc_resolver::TsconfigReferences::Auto;
 use oxc_resolver::{ResolveOptions, Resolver, TsconfigOptions};
 use std::path::PathBuf;
-use log::debug;
 
 pub fn create_resolver(tsconfig_path: String) -> Resolver {
   debug!("tsconfig_path: {}", tsconfig_path);
