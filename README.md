@@ -1,7 +1,7 @@
 # I18n scanner rs
 [![CI](https://github.com/Justinidlerz/i18n-scanner-rs/actions/workflows/CI.yml/badge.svg)](https://github.com/Justinidlerz/i18n-scanner-rs/actions/workflows/CI.yml)
 
-A superfast i18next scanner tool written in Rust, based on [Oxc](https://github.com/oxc-project/oxc)
+A superfast i18next scanner tool written in Rust, based on [Oxc](https://github.com/oxc-project/oxc)  
 The node.js API is implemented by [NAPI](https://github.com/napi-rs/napi-rs)
 
 ## How it works
@@ -65,11 +65,12 @@ export declare function scan(payload: Payload): Record<string, Array<string>>
 ```
 
 ## TODO
-- [ ] HOCWrapper scan
-- [ ] TransComp scan
-- [ ] TranslationComp scan
+- [x] HOCWrapper scan
+- [x] TransComp scan
+- [x] TranslationComp scan
+- [x] Template literal collect
 - [ ] Variable referenced cross file
-- [ ] Template literal collect
+- [ ] Dynamic keys
 
 
 ## License

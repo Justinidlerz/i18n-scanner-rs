@@ -9,16 +9,17 @@
     "index.js"
   ],
   "napi": {
-    "name": "i18n-scanner-rs",
-    "triples": {
-      "additional": [
-        "aarch64-apple-darwin"
-      ]
-    }
+    "binaryName": "i18n-scanner-rs",
+    "targets": [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc"
+    ]
   },
   "license": "MIT",
   "devDependencies": {
-    "@napi-rs/cli": "^2.18.4",
+    "@napi-rs/cli": "^3.2.0",
     "@types/node": "^22.15.30",
     "glob": "^11.0.2",
     "i18next": "^25.1.2",

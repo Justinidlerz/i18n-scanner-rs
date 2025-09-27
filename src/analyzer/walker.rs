@@ -1,8 +1,12 @@
-use crate::node::i18n_types::I18nMember;
+use crate::analyzer::i18n_packages::is_preset_member_name;
+use crate::node::i18n_types::{I18nMember, I18nType};
 use crate::node::node::Node;
 use crate::node::node_store::NodeStore;
 use crate::walk_utils::WalkerUtils;
-use oxc_ast::ast::{CallExpression, Expression, Statement, StringLiteral, VariableDeclarator};
+use log::debug;
+use oxc_ast::ast::{
+  CallExpression, Expression, FunctionBody, Statement, StringLiteral, VariableDeclarator,
+};
 use oxc_ast::AstKind;
 use oxc_resolver::Resolver;
 use oxc_semantic::Semantic;
@@ -96,10 +100,10 @@ impl<'a> Walker<'a> {
               .or_insert_with(|| path_str.to_string());
           })
       } else {
-        println!("[i18n-scanner-rs] failed to format path: {}", source.value)
+        debug!("[i18n-scanner-rs] failed to format path: {}", source.value)
       }
     } else {
-      println!(
+      debug!(
         "[i18n-scanner-rs] failed to resolve: {} in {}",
         source.value, self.node.file_path
       );
@@ -108,6 +112,74 @@ impl<'a> Walker<'a> {
 
   pub fn get_importing_collection(&self) -> HashMap<String, String> {
     self.importing_collection.clone()
+  }
+
+  pub fn is_custom_i18n_hook_function(&self, body: &FunctionBody) -> bool {
+    // Check if this function uses useTranslation and returns a t() call
+    // This would make it a custom i18n hook
+
+    let mut uses_use_translation = false;
+    let mut returns_t_call = false;
+
+    for stmt in &body.statements {
+      // Check for useTranslation call
+      if self.statement_contains_use_translation(stmt) {
+        uses_use_translation = true;
+      }
+
+      // Check for return statement with t() call
+      if let Statement::ReturnStatement(ret_stmt) = stmt {
+        if let Some(arg) = &ret_stmt.argument {
+          if self.expression_contains_t_call(arg) {
+            returns_t_call = true;
+          }
+        }
+      }
+    }
+
+    uses_use_translation && returns_t_call
+  }
+
+  fn statement_contains_use_translation(&self, stmt: &Statement) -> bool {
+    match stmt {
+      Statement::VariableDeclaration(var_decl) => {
+        for declarator in &var_decl.declarations {
+          if let Some(init) = &declarator.init {
+            if self.expression_contains_use_translation(init) {
+              return true;
+            }
+          }
+        }
+      }
+      _ => {}
+    }
+    false
+  }
+
+  fn expression_contains_use_translation(&self, expr: &Expression) -> bool {
+    match expr {
+      Expression::CallExpression(call) => {
+        if let Expression::Identifier(ident) = &call.callee {
+          let hook_type = I18nType::Hook;
+          return is_preset_member_name(ident.name.as_str(), &hook_type);
+        }
+      }
+      _ => {}
+    }
+    false
+  }
+
+  fn expression_contains_t_call(&self, expr: &Expression) -> bool {
+    match expr {
+      Expression::CallExpression(call) => {
+        if let Expression::Identifier(ident) = &call.callee {
+          let t_method_type = I18nType::TMethod;
+          return is_preset_member_name(ident.name.as_str(), &t_method_type);
+        }
+      }
+      _ => {}
+    }
+    false
   }
 
   pub fn resolve_i18n_export(&self, de: &VariableDeclarator) -> Option<I18nMember> {
@@ -145,18 +217,28 @@ impl<'a> Walker<'a> {
 
     match &init {
       Expression::ArrowFunctionExpression(func) => {
-        // Nothing implemented
-        // TODO: handle other cases
-        if func.body.statements.len() != 1 {
-          return None;
-        };
+        // Handle arrow functions that might be custom i18n hooks
 
-        // const fn = () => useTranslation("abc");
-        if func.expression {
-          return resolve_expression_fn(&func.body.statements[0]);
+        // Single statement case
+        if func.body.statements.len() == 1 {
+          // const fn = () => useTranslation("abc");
+          if func.expression {
+            return resolve_expression_fn(&func.body.statements[0]);
+          }
+          return resolve_return_fn(&func.body.statements[0]);
         }
 
-        resolve_return_fn(&func.body.statements[0])
+        // Multi-statement case - check if this function uses useTranslation
+        // and returns a t() call, making it a custom i18n hook
+        if self.is_custom_i18n_hook_function(&func.body) {
+          // This is a custom i18n hook, mark it as such
+          return Some(I18nMember {
+            r#type: crate::node::i18n_types::I18nType::Hook,
+            ns: None,
+          });
+        }
+
+        None
       }
       // const a = function () {}
       Expression::FunctionExpression(func) => {
@@ -187,7 +269,7 @@ impl<'a> Walker<'a> {
     };
     self.resolve_call_i18n_method(call)
   }
-  
+
   pub fn resolve_call_i18n_method(&self, call_exp: &CallExpression) -> Option<I18nMember> {
     let Expression::Identifier(id) = &call_exp.callee else {
       return None;
