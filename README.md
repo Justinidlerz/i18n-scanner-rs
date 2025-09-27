@@ -68,4 +68,4 @@ export declare function scan(payload: Payload): Record<string, Array<string>>
 
 For a detailed explanation on how things work, checkout the [Oxc](https://github.com/oxc-project/oxc) and [NAPI](https://github.com/napi-rs/napi-rs) doc
 
-Copyright (c) 2024-present, Idler.zhu
+Copyright (c) 2025-present, Idler.zhu
