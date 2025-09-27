@@ -64,17 +64,8 @@ export interface Payload {
 export declare function scan(payload: Payload): Record<string, Array<string>>
 ```
 
-## TODO
-- [x] HOCWrapper scan
-- [x] TransComp scan
-- [x] TranslationComp scan
-- [x] Template literal collect
-- [ ] Variable referenced cross file
-- [ ] Dynamic keys
-
-
 ## License
 
 For a detailed explanation on how things work, checkout the [Oxc](https://github.com/oxc-project/oxc) and [NAPI](https://github.com/napi-rs/napi-rs) doc
 
-Copyright (c) 2024-present, Idler.zhu
+Copyright (c) 2025-present, Idler.zhu
