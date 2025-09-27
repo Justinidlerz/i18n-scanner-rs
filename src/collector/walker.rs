@@ -349,6 +349,57 @@ impl<'a> Walker<'a> {
                       if let Some(call_node) = self.semantic.nodes().parent_node(node.id()) {
                         if let AstKind::CallExpression(call) = call_node.kind() {
                           self.read_hook_from_namespace(call, member_info.ns.clone());
+
+                          if let Some(assign_node) =
+                            self.semantic.nodes().parent_node(call_node.id())
+                          {
+                            if let AstKind::VariableDeclarator(var) = assign_node.kind() {
+                              let namespace = self
+                                .walk_utils
+                                .read_hook_namespace_argument(call)
+                                .or_else(|| member_info.ns.clone());
+
+                              match &var.id.kind {
+                                BindingPatternKind::ObjectPattern(obj) => {
+                                  let translation_names = Self::collect_t_member_names(members);
+
+                                  obj.properties.iter().for_each(|prop| {
+                                    if let PropertyKey::StaticIdentifier(key) = &prop.key {
+                                      if translation_names.contains(key.name.as_str())
+                                        || self.is_known_t_name(key.name.as_str())
+                                      {
+                                        match &prop.value.kind {
+                                          BindingPatternKind::BindingIdentifier(ident) => {
+                                            self.register_t_symbol(
+                                              ident.symbol_id(),
+                                              ident.name.as_str(),
+                                            );
+                                            self.read_t(ident.symbol_id(), namespace.clone());
+                                          }
+                                          BindingPatternKind::AssignmentPattern(assign) => {
+                                            if let BindingPatternKind::BindingIdentifier(ident) =
+                                              &assign.left.kind
+                                            {
+                                              self.register_t_symbol(
+                                                ident.symbol_id(),
+                                                ident.name.as_str(),
+                                              );
+                                              self.read_t(ident.symbol_id(), namespace.clone());
+                                            }
+                                          }
+                                          _ => {}
+                                        }
+                                      }
+                                    }
+                                  });
+                                }
+                                BindingPatternKind::BindingIdentifier(ident) => {
+                                  self.read_object_member_t(ident.symbol_id(), namespace);
+                                }
+                                _ => {}
+                              }
+                            }
+                          }
                         }
                       }
                     }
