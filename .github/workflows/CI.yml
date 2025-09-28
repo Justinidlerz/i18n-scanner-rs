@@ -30,7 +30,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: pnpm
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
       - name: Install
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -75,7 +76,6 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: pnpm
       - uses: pnpm/action-setup@v4
         name: Install pnpm
       - name: Install
@@ -149,8 +149,9 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
-          cache: pnpm
           architecture: ${{ matrix.settings.architecture }}
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
       - name: Install dependencies
         run: pnpm install
       - name: Download artifacts
@@ -183,7 +184,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
-          cache: pnpm
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
       - name: Output docker params
         id: docker
         run: |
@@ -245,7 +247,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: pnpm
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
       - name: Install dependencies
         run: pnpm install
       - name: create npm dirs
