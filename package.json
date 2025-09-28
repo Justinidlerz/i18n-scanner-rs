@@ -1,6 +1,6 @@
 {
   "name": "@i18n-scanner-rs/main",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "main": "index.js",
   "types": "index.d.ts",
   "files": [
@@ -76,6 +76,9 @@
     "trailingComma": "all",
     "singleQuote": true,
     "arrowParens": "always"
+  },
+  "resolutions": {
+    "tinypool": "1.0.2"
   },
   "repository": {
     "type": "git",
