@@ -228,6 +228,8 @@ jobs:
           platforms: all
       - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
         if: ${{ contains(matrix.target, 'armv7') }}
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
       - name: Test bindings
         uses: addnab/docker-run-action@v3
         with:
