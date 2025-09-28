@@ -30,7 +30,7 @@ pub enum I18nType {
   TransComp,
   TranslationComp,
   HocWrapper,
-  ObjectMemberT
+  ObjectMemberT,
 }
 
 #[derive(Clone, Debug)]

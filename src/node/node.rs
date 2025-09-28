@@ -79,13 +79,13 @@ impl Node {
     let Some((path, node)) = source else {
       return Err(());
     };
-    
+
     node.insert_imports(self.file_path.clone());
-    
+
     let mut importing = self.importing.borrow_mut();
 
     importing.insert(specifier, path);
-    
+
     drop(importing);
     Ok(())
   }

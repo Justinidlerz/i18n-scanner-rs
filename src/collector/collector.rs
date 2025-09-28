@@ -46,16 +46,13 @@ impl Collector {
       // Detect custom i18n hooks that wrap useTranslation
       walker.detect_custom_i18n_hooks();
 
-      walker
-        .i18n_namespaces
-        .iter()
-        .for_each(|(namespace, keys)| {
-          self
-            .i18n_namespaces
-            .entry(namespace.to_string())
-            .or_default()
-            .extend(keys.iter().cloned());
-        })
+      walker.i18n_namespaces.iter().for_each(|(namespace, keys)| {
+        self
+          .i18n_namespaces
+          .entry(namespace.to_string())
+          .or_default()
+          .extend(keys.iter().cloned());
+      })
     }
     self
   }
@@ -179,11 +176,7 @@ mod tests {
     vec!["WRAPPED_USE_TRANSLATION"]
   );
 
-  key_match!(
-    hoc_component,
-    "HocComp.tsx".into(),
-    vec!["HOC_COMPONENT"]
-  );
+  key_match!(hoc_component, "HocComp.tsx".into(), vec!["HOC_COMPONENT"]);
 
   key_match!(
     trans_component,
@@ -203,4 +196,3 @@ mod tests {
     vec!["I18N_CODE_DYNAMIC_hello", "I18N_CODE_DYNAMIC_world"]
   );
 }
-
