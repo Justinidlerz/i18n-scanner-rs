@@ -10,8 +10,8 @@ use crate::analyzer::i18n_packages::I18nPackage;
 use crate::node::node_store::NodeStore;
 use analyzer::analyzer::Analyzer;
 use collector::collector::Collector;
-use std::collections::HashMap;
 use log::info;
+use std::collections::HashMap;
 
 #[napi(object)]
 pub struct Payload {
@@ -35,7 +35,7 @@ pub struct Payload {
 pub fn scan(payload: Payload) -> HashMap<String, Vec<String>> {
   // Initialize logger - use try_init to avoid panic if already initialized
   let _ = env_logger::try_init();
-  
+
   if payload.entry_paths.len() < 1 {
     panic!("entry_paths is empty");
   }
@@ -74,9 +74,8 @@ mod tests {
   use crate::analyzer::analyzer::Analyzer;
   use crate::collector::collector::Collector;
   use crate::node::node_store::NodeStore;
-  use std::path::PathBuf;
   use log::info;
-  
+  use std::path::PathBuf;
 
   #[test]
   fn case_test() {

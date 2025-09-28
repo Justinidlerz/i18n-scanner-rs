@@ -15,10 +15,7 @@ impl KeyPath {
     Self::String(s)
   }
   pub fn from_node(node: Weak<String>, member: String) -> Self {
-    Self::LinkedKey(KeyRef {
-      member,
-      node,
-    })
+    Self::LinkedKey(KeyRef { member, node })
   }
 }
 
