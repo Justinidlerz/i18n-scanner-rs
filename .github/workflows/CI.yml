@@ -26,12 +26,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
       - name: Setup node
         uses: actions/setup-node@v5
         with:
           node-version: 22
-      - uses: pnpm/action-setup@v4
-        name: Install pnpm
       - name: Install
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -72,12 +72,13 @@ jobs:
     runs-on: ${{ matrix.settings.host }}
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
       - name: Setup node
         uses: actions/setup-node@v5
         with:
           node-version: 22
-      - uses: pnpm/action-setup@v4
-        name: Install pnpm
+          cache: 'pnpm'
       - name: Install
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -145,13 +146,14 @@ jobs:
     runs-on: ${{ matrix.settings.host }}
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
       - name: Setup node
         uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
           architecture: ${{ matrix.settings.architecture }}
-      - uses: pnpm/action-setup@v4
-        name: Install pnpm
+          cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install
       - name: Download artifacts
@@ -180,12 +182,13 @@ jobs:
     runs-on: ${{ contains(matrix.target, 'aarch64') && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
       - name: Setup node
         uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
-      - uses: pnpm/action-setup@v4
-        name: Install pnpm
+          cache: 'pnpm'
       - name: Output docker params
         id: docker
         run: |
@@ -243,12 +246,13 @@ jobs:
       - test-linux-binding
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
       - name: Setup node
         uses: actions/setup-node@v5
         with:
           node-version: 22
-      - uses: pnpm/action-setup@v4
-        name: Install pnpm
+          cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install
       - name: create npm dirs
