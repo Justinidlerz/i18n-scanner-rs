@@ -1,9 +1,6 @@
 {
   "name": "@i18n-scanner-rs/main-darwin-x64",
   "version": "0.2.1",
-  "os": [
-    "darwin"
-  ],
   "cpu": [
     "x64"
   ],
@@ -14,10 +11,17 @@
   "description": "A superfast i18next scanner tool written in Rust, based on Oxc",
   "license": "MIT",
   "engines": {
-    "node": ">= 10"
+    "node": ">= 12.22.0 < 13 || >= 14.17.0 < 15 || >= 15.12.0 < 16 || >= 16.0.0"
   },
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/Justinidlerz/i18n-scanner-rs.git"
-  }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "os": [
+    "darwin"
+  ]
 }
