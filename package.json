@@ -64,7 +64,7 @@
     "format:rs": "cargo fmt",
     "lint": "oxlint .",
     "prepublishOnly": "napi prepublish -t npm",
-    "test": "node tests/test.mjs",
+    "test": "vitest",
     "preversion": "napi build --platform && git add .",
     "version": "napi version",
     "prepare": "husky"
