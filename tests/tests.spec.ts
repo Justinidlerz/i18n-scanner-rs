@@ -1,3 +1,4 @@
+console.log('system info', process.platform, process.arch)
 import {describe, it, expect} from "vitest";
 import {scan} from '../index'
 import * as path from 'node:path'
