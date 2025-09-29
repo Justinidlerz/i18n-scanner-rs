@@ -4,7 +4,6 @@
   "main": "index.js",
   "types": "index.d.ts",
   "files": [
-    "i18n-scanner-rs.darwin-arm64.node",
     "index.d.ts",
     "index.js"
   ],
