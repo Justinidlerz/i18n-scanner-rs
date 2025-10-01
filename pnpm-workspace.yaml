@@ -1,0 +1,3 @@
+packages:
+  - '.'
+  - 'tests/custom-i18n'

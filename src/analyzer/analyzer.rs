@@ -98,7 +98,13 @@ impl Analyzer {
 
 #[cfg(test)]
 mod tests {
-  use crate::analyzer::test_utils::{analyze, make_extend_packages};
+  use crate::analyzer::test_utils::{
+    analyze,
+    make_custom_i18n_package,
+    make_extend_packages,
+    test_path,
+  };
+  use std::path::Path;
 
   #[test]
   fn make_seed() {
@@ -121,6 +127,29 @@ mod tests {
     let (_, node_store) = analyze("index.tsx".into(), Some(pkgs));
 
     assert_eq!(node_store.get_i18n_exported_nodes().len(), 4);
+  }
+
+  #[test]
+  fn extended_custom_package_is_seeded() {
+    let pkgs = make_custom_i18n_package();
+
+    let (analyzer, node_store) = analyze("CustomI18n.tsx".into(), Some(pkgs));
+
+    let entry_path = test_path("CustomI18n.tsx");
+    let base = Path::new(&entry_path).parent().unwrap();
+    let resolved = analyzer
+      .resolver
+      .resolve(base, "@custom/i18n")
+      .expect("custom package should resolve");
+
+    let resolved_path = resolved.path().to_str().expect("path to str");
+
+    let has_custom_package = node_store
+      .get_i18n_exported_nodes()
+      .iter()
+      .any(|(path, _)| path.as_str() == resolved_path);
+
+    assert!(has_custom_package, "custom package should be seeded");
   }
 
   #[test]

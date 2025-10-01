@@ -70,6 +70,7 @@ impl Collector {
 
 #[cfg(test)]
 mod tests {
+  use crate::analyzer::test_utils::make_custom_i18n_package;
   use crate::collector::test_utils::collect;
   use crate::key_match;
 
@@ -85,6 +86,14 @@ mod tests {
     assert_eq!(collector.get_keys("namespace_1").len(), 2);
     assert_eq!(collector.get_keys("namespace_2").len(), 1);
     assert_eq!(collector.get_keys("namespace_3").len(), 2);
+  }
+
+  #[test]
+  fn full_collect_with_custom_package() {
+    let (_, collector) = collect("index.tsx".into(), Some(make_custom_i18n_package()));
+
+    assert_eq!(collector.i18n_namespaces.len(), 5);
+    assert_eq!(collector.get_keys("custom_namespace").len(), 3);
   }
 
   key_match!(
@@ -177,6 +186,14 @@ mod tests {
   );
 
   key_match!(hoc_component, "HocComp.tsx".into(), vec!["HOC_COMPONENT"]);
+
+  key_match!(
+    custom_i18n_usage,
+    "CustomI18n.tsx".into(),
+    "custom_namespace".into(),
+    make_custom_i18n_package(),
+    vec!["CUSTOM_GLOBAL_T", "CUSTOM_HOOK_KEY", "CUSTOM_HOOK_KEY_AGAIN"]
+  );
 
   key_match!(
     trans_component,
