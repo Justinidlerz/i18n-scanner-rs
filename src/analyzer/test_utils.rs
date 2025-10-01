@@ -1,5 +1,5 @@
 use crate::analyzer::analyzer::Analyzer;
-use crate::analyzer::i18n_packages::{I18nPackage, Member};
+use crate::analyzer::i18n_packages::{I18nPackage, Member, PRESET_I18N_MEMBERS};
 use crate::node::i18n_types::I18nType;
 use crate::node::node_store::NodeStore;
 use fs::canonicalize;
@@ -39,5 +39,19 @@ pub fn make_extend_packages() -> Vec<I18nPackage> {
       name: "useFeTranslation".to_string(),
       ns: Some("namespace_3".into()),
     }],
+  }]
+}
+
+pub fn make_custom_i18n_package() -> Vec<I18nPackage> {
+  vec![I18nPackage {
+    package_path: "@custom/i18n".into(),
+    members: PRESET_I18N_MEMBERS
+      .iter()
+      .map(|(name, r#type)| Member {
+        name: name.to_string(),
+        r#type: r#type.clone(),
+        ns: None,
+      })
+      .collect(),
   }]
 }

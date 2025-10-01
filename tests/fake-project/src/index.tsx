@@ -20,6 +20,7 @@ import TWithNamespace from './TWithNamespace';
 import NamespaceOverride from './NamespaceOverride';
 import { memberT } from './memberT';
 import NamespaceFromVar from './NamespaceFromVar';
+import CustomI18n from './CustomI18n';
 
 init();
 
@@ -47,6 +48,7 @@ const Entry = () => {
       <MemberCallT />
       <NamespaceImport />
       <I18nCodeCrossFile />
+      <CustomI18n />
     </>
   );
 };

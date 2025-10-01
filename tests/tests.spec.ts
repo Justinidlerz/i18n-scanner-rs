@@ -1,9 +1,22 @@
 import {describe, it, expect} from "vitest";
-import {scan} from '../index'
+import {scan, I18nType} from '../index'
 import * as path from 'node:path'
 
 const root = path.join(__dirname, './fake-project');
 const tsconfigPath = path.join(root, 'tsconfig.json');
+const extendPackages = [
+    {
+        packagePath: '@custom/i18n',
+        members: [
+            {name: 'useTranslation', type: I18nType.Hook},
+            {name: 't', type: I18nType.TMethod},
+            {name: 'Trans', type: I18nType.TransComp},
+            {name: 'Translation', type: I18nType.TranslationComp},
+            {name: 'withTranslation', type: I18nType.HocWrapper},
+            {name: 'i18n', type: I18nType.ObjectMemberT},
+        ],
+    },
+];
 
 describe("I18n-scanner-rs", () => {
     it('Should collect matched snapshot', () => {
@@ -11,10 +24,16 @@ describe("I18n-scanner-rs", () => {
             entryPaths: [path.join(root, './src/index.tsx')],
             tsconfigPath,
             externals: [],
+            extendI18NPackages: extendPackages,
         });
         const sortedResult = Object.fromEntries(Object.entries(result).map(([k, v]) => [k, v.sort()]));
         expect(sortedResult).toMatchInlineSnapshot(`
           {
+            "custom_namespace": [
+              "CUSTOM_GLOBAL_T",
+              "CUSTOM_HOOK_KEY",
+              "CUSTOM_HOOK_KEY_AGAIN",
+            ],
             "default": [
               "GLOBAL_T",
               "HOC_COMPONENT",
