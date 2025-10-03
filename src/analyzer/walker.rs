@@ -60,14 +60,10 @@ impl<'a> Walker<'a> {
   }
 
   pub fn resolve_import(&mut self, source: &StringLiteral, specifiers: Vec<String>) {
-    // external packages no need to be collected
-    if self
+    let is_external = self
       .externals
       .iter()
-      .any(|reg| reg.is_match(source.value.as_str()))
-    {
-      return;
-    }
+      .any(|reg| reg.is_match(source.value.as_str()));
 
     let basename = Path::new(self.node.file_path.as_str())
       .parent()
@@ -78,6 +74,10 @@ impl<'a> Walker<'a> {
       .resolve(basename.to_str().unwrap(), source.value.as_str())
     {
       if let Some(path_str) = res.path().to_str() {
+        if is_external && self.i18n_methods.get_node(path_str).is_none() {
+          return;
+        }
+
         if let Some(node) = self.i18n_methods.get_node(path_str) {
           let importing_node_members = node.get_exporting_i18n_members();
 

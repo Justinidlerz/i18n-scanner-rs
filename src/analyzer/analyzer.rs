@@ -98,7 +98,9 @@ impl Analyzer {
 
 #[cfg(test)]
 mod tests {
-  use crate::analyzer::test_utils::{analyze, make_extend_packages};
+  use crate::analyzer::test_utils::{
+    analyze, analyze_with_options, make_custom_i18n_package, make_extend_packages,
+  };
 
   #[test]
   fn make_seed() {
@@ -132,5 +134,68 @@ mod tests {
     //   "mf_.*".into(),
     //   "@dynokit/.*".into(),
     // ],
+  }
+
+  #[test]
+  fn extend_custom_package_with_default_members() {
+    let packages = make_custom_i18n_package();
+    let (_, node_store) = analyze("custom-i18n/index.tsx".into(), Some(packages));
+
+    let exported_nodes = node_store.get_i18n_exported_nodes();
+    let custom_node = exported_nodes
+      .iter()
+      .find(|(path, _)| path.ends_with("tests/custom-i18n/index.ts"))
+      .map(|(_, node)| node.clone());
+
+    let Some(node) = custom_node else {
+      panic!("custom i18n package was not seeded");
+    };
+
+    let members = node.get_exporting_i18n_members();
+
+    for member_name in [
+      "t",
+      "useTranslation",
+      "Trans",
+      "Translation",
+      "withTranslation",
+      "i18n",
+    ] {
+      assert!(
+        members.contains_key(member_name),
+        "missing member {member_name}"
+      );
+    }
+  }
+
+  #[test]
+  fn externals_keep_preset_packages_available() {
+    let (_, node_store) = analyze_with_options(
+      "index.tsx".into(),
+      None,
+      vec!["i18next".into(), "react-i18next".into()],
+    );
+
+    assert!(node_store.get_all_i18n_nodes().len() > 0);
+  }
+
+  #[test]
+  fn externals_keep_custom_package_available() {
+    let packages = make_custom_i18n_package();
+    let (_, node_store) = analyze_with_options(
+      "custom-i18n/index.tsx".into(),
+      Some(packages),
+      vec![
+        "@custom/i18n".into(),
+        "i18next".into(),
+        "react-i18next".into(),
+      ],
+    );
+
+    assert!(node_store.get_all_i18n_nodes().len() > 0);
+    assert!(node_store
+      .get_i18n_exported_nodes()
+      .keys()
+      .any(|path| path.ends_with("tests/custom-i18n/index.ts")));
   }
 }

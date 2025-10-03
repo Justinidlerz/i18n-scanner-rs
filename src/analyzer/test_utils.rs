@@ -18,9 +18,17 @@ pub fn test_path(file_suffix: &str) -> String {
 }
 
 pub fn analyze(entry: String, extend_packages: Option<Vec<I18nPackage>>) -> (Analyzer, NodeStore) {
+  analyze_with_options(entry, extend_packages, vec![])
+}
+
+pub fn analyze_with_options(
+  entry: String,
+  extend_packages: Option<Vec<I18nPackage>>,
+  externals: Vec<String>,
+) -> (Analyzer, NodeStore) {
   let node_store = NodeStore::default();
 
-  let mut analyzer = Analyzer::new(node_store.clone(), test_path("../tsconfig.json"), vec![]);
+  let mut analyzer = Analyzer::new(node_store.clone(), test_path("../tsconfig.json"), externals);
 
   let source_path = test_path(entry.as_str());
 
@@ -39,5 +47,12 @@ pub fn make_extend_packages() -> Vec<I18nPackage> {
       name: "useFeTranslation".to_string(),
       ns: Some("namespace_3".into()),
     }],
+  }]
+}
+
+pub fn make_custom_i18n_package() -> Vec<I18nPackage> {
+  vec![I18nPackage {
+    package_path: "@custom/i18n".into(),
+    members: vec![],
   }]
 }

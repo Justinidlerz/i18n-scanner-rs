@@ -1,6 +1,6 @@
 use crate::analyzer::analyzer::Analyzer;
 use crate::analyzer::i18n_packages::I18nPackage;
-use crate::analyzer::test_utils::analyze;
+use crate::analyzer::test_utils::analyze_with_options;
 use crate::collector::collector::Collector;
 use log::debug;
 
@@ -42,10 +42,18 @@ macro_rules! key_match {
 }
 
 pub fn collect(entry: String, extend_packages: Option<Vec<I18nPackage>>) -> (Analyzer, Collector) {
+  collect_with_options(entry, extend_packages, vec![])
+}
+
+pub fn collect_with_options(
+  entry: String,
+  extend_packages: Option<Vec<I18nPackage>>,
+  externals: Vec<String>,
+) -> (Analyzer, Collector) {
   // Initialize logger for tests - use try_init to avoid panic if already initialized
   let _ = env_logger::try_init();
 
-  let (analyzer, node_store) = analyze(entry, extend_packages);
+  let (analyzer, node_store) = analyze_with_options(entry, extend_packages, externals);
 
   let with_i18n_nodes = node_store.get_all_i18n_nodes();
 

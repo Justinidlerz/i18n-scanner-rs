@@ -43,9 +43,6 @@ impl Collector {
 
       walk::walk_program(&mut walker, &program);
 
-      // Detect custom i18n hooks that wrap useTranslation
-      walker.detect_custom_i18n_hooks();
-
       walker.i18n_namespaces.iter().for_each(|(namespace, keys)| {
         self
           .i18n_namespaces
@@ -70,7 +67,8 @@ impl Collector {
 
 #[cfg(test)]
 mod tests {
-  use crate::collector::test_utils::collect;
+  use crate::analyzer::test_utils::make_custom_i18n_package;
+  use crate::collector::test_utils::{collect, collect_with_options};
   use crate::key_match;
 
   #[test]
@@ -81,7 +79,7 @@ mod tests {
 
     println!("default {:?}", collector.get_keys("default"));
 
-    assert_eq!(collector.get_keys("default").len(), 17);
+    assert_eq!(collector.get_keys("default").len(), 16);
     assert_eq!(collector.get_keys("namespace_1").len(), 2);
     assert_eq!(collector.get_keys("namespace_2").len(), 1);
     assert_eq!(collector.get_keys("namespace_3").len(), 2);
@@ -195,4 +193,33 @@ mod tests {
     "I18nCodeDynamic.tsx".into(),
     vec!["I18N_CODE_DYNAMIC_hello", "I18N_CODE_DYNAMIC_world"]
   );
+
+  #[test]
+  fn collect_custom_i18n_package() {
+    let extend = make_custom_i18n_package();
+    let (_, collector) = collect("custom-i18n/index.tsx".into(), Some(extend));
+
+    assert_eq!(collector.i18n_namespaces.len(), 4);
+    assert_eq!(collector.get_keys("default").len(), 16);
+    assert_eq!(collector.get_keys("namespace_1").len(), 2);
+    assert_eq!(collector.get_keys("namespace_2").len(), 1);
+    assert_eq!(collector.get_keys("namespace_3").len(), 2);
+  }
+
+  #[test]
+  fn collect_custom_i18n_with_externals() {
+    let extend = make_custom_i18n_package();
+    let (_, collector) = collect_with_options(
+      "custom-i18n/index.tsx".into(),
+      Some(extend),
+      vec![
+        "@custom/i18n".into(),
+        "i18next".into(),
+        "react-i18next".into(),
+      ],
+    );
+
+    assert_eq!(collector.get_keys("default").len(), 16);
+    assert_eq!(collector.get_keys("namespace_3").len(), 2);
+  }
 }

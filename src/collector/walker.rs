@@ -6,10 +6,10 @@ use crate::walk_utils::WalkerUtils;
 use log::debug;
 use oxc_allocator::Box as OxcBox;
 use oxc_ast::ast::{
-  ArrayExpression, BinaryExpression, BinaryOperator, BindingPatternKind, CallExpression,
-  Expression, FunctionBody, IdentifierReference, ImportSpecifier, JSXAttributeItem,
-  JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXExpression, JSXFragment,
-  JSXOpeningElement, ObjectPropertyKind, PropertyKey, SourceType, Statement, TemplateLiteral,
+  BinaryExpression, BinaryOperator, BindingPatternKind, CallExpression, Expression,
+  IdentifierReference, ImportSpecifier, JSXAttributeItem, JSXAttributeName, JSXAttributeValue,
+  JSXChild, JSXElement, JSXExpression, JSXFragment, JSXOpeningElement, ObjectPropertyKind,
+  PropertyKey, SourceType, Statement,
 };
 use oxc_ast::AstKind;
 use oxc_semantic::Semantic;
@@ -25,8 +25,6 @@ pub struct Walker<'a> {
   pub i18n_namespaces: HashMap<String, Vec<String>>,
   pub post_collects: PostCollector,
   pub walk_utils: WalkerUtils<'a>,
-  hook_symbol_ids: HashSet<SymbolId>,
-  hook_names: HashSet<String>,
   t_symbol_ids: HashSet<SymbolId>,
   t_function_names: HashSet<String>,
   translation_member_names: HashSet<String>,
@@ -40,17 +38,10 @@ impl<'a> Walker<'a> {
       i18n_namespaces: HashMap::new(),
       post_collects: PostCollector::new(),
       walk_utils: WalkerUtils::new(semantic, node.clone()),
-      hook_symbol_ids: HashSet::new(),
-      hook_names: HashSet::new(),
       t_symbol_ids: HashSet::new(),
       t_function_names: HashSet::new(),
       translation_member_names: HashSet::new(),
     }
-  }
-
-  pub(crate) fn register_hook_symbol(&mut self, symbol_id: SymbolId, name: &str) {
-    self.hook_symbol_ids.insert(symbol_id);
-    self.hook_names.insert(name.to_string());
   }
 
   pub(crate) fn register_t_symbol(&mut self, symbol_id: SymbolId, name: &str) {
@@ -86,15 +77,6 @@ impl<'a> Walker<'a> {
     names
   }
 
-  fn is_known_hook_name(&self, name: &str) -> bool {
-    if self.hook_names.contains(name) {
-      return true;
-    }
-
-    let hook_type = I18nType::Hook;
-    is_preset_member_name(name, &hook_type)
-  }
-
   fn is_known_t_name(&self, name: &str) -> bool {
     if self.t_function_names.contains(name) {
       return true;
@@ -106,21 +88,6 @@ impl<'a> Walker<'a> {
 
     let t_method_type = I18nType::TMethod;
     is_preset_member_name(name, &t_method_type)
-  }
-
-  fn is_hook_identifier(&self, ident: &IdentifierReference) -> bool {
-    if let Some(symbol_id) = self
-      .semantic
-      .scoping()
-      .get_reference(ident.reference_id())
-      .symbol_id()
-    {
-      if self.hook_symbol_ids.contains(&symbol_id) {
-        return true;
-      }
-    }
-
-    self.is_known_hook_name(ident.name.as_str())
   }
 
   fn is_t_identifier(&self, ident: &IdentifierReference) -> bool {
@@ -203,7 +170,6 @@ impl<'a> Walker<'a> {
     members: &HashMap<String, Option<I18nMember>>,
   ) {
     let local_symbol_id = s.local.symbol_id();
-    self.register_hook_symbol(local_symbol_id, s.local.name.as_str());
 
     let translation_names = Self::collect_t_member_names(members);
     self.register_translation_names(translation_names.iter().cloned());
@@ -446,37 +412,6 @@ impl<'a> Walker<'a> {
     // by the normal flow when they are encountered
   }
 
-  pub fn read_custom_hook(&mut self, symbol_id: SymbolId, defined_ns: Option<String>) {
-    // Handle custom hooks that wrap i18n functions
-    self
-      .semantic
-      .symbol_references(symbol_id)
-      .for_each(|ref_item| {
-        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
-          match node.kind() {
-            AstKind::Function(func) => {
-              if let Some(body) = &func.body {
-                for stmt in &body.statements {
-                  self.read_statement_for_t_calls(stmt, defined_ns.clone());
-                }
-              }
-            }
-            AstKind::VariableDeclarator(var) => {
-              if let Some(init) = &var.init {
-                if let Expression::ArrowFunctionExpression(arrow) = init {
-                  let body = &arrow.body;
-                  for stmt in &body.statements {
-                    self.read_statement_for_t_calls(stmt, defined_ns.clone());
-                  }
-                }
-              }
-            }
-            _ => {}
-          }
-        }
-      });
-  }
-
   pub fn try_resolve_dynamic_keys(&self, expr: &Expression) -> Option<Vec<String>> {
     // Try to resolve dynamic key patterns like keyPrefix + '_' + v
     // where v is a parameter that could have multiple values
@@ -629,193 +564,6 @@ impl<'a> Walker<'a> {
         }
       }
       _ => None,
-    }
-  }
-
-  pub fn detect_custom_i18n_hooks(&mut self) {
-    // Search for functions that call useTranslation and treat them as i18n functions
-    debug!(
-      "Detecting custom i18n hooks in file: {}",
-      self.node.file_path
-    );
-    for node in self.semantic.nodes().iter() {
-      match node.kind() {
-        AstKind::Function(func) => {
-          if let Some(body) = &func.body {
-            if let Some(namespace) = self.detect_hook_namespace(body) {
-              debug!(
-                "Found custom i18n hook (function) with namespace: {}",
-                namespace
-              );
-              // This function uses useTranslation, so it's a custom i18n hook
-              for stmt in &body.statements {
-                self.read_statement_for_t_calls(stmt, Some(namespace.clone()));
-              }
-            } else if self.function_uses_use_translation(body) {
-              debug!("Found custom i18n hook (function) with default namespace");
-              // This function uses useTranslation, so it's a custom i18n hook
-              for stmt in &body.statements {
-                self.read_statement_for_t_calls(stmt, None);
-              }
-            }
-          }
-        }
-        AstKind::VariableDeclarator(var) => {
-          if let Some(init) = &var.init {
-            if let Expression::ArrowFunctionExpression(arrow) = init {
-              let body = &arrow.body;
-              // Check if this is a known custom hook with a specific namespace
-              if let BindingPatternKind::BindingIdentifier(ident) = &var.id.kind {
-                if let Some(namespace) = self.detect_custom_hook_namespace(&ident.name) {
-                  debug!(
-                    "Found custom i18n hook (arrow function): {} with namespace: {}",
-                    ident.name, namespace
-                  );
-                  // This function is a known custom hook with a specific namespace
-                  // Don't process the hook definition itself - just register the hook
-                  continue;
-                }
-              }
-
-              if let Some(namespace) = self.detect_hook_namespace(body) {
-                if let BindingPatternKind::BindingIdentifier(ident) = &var.id.kind {
-                  debug!(
-                    "Found custom i18n hook (arrow function): {} with namespace: {}",
-                    ident.name, namespace
-                  );
-                }
-                // This function uses useTranslation, so it's a custom i18n hook
-                for stmt in &body.statements {
-                  self.read_statement_for_t_calls(stmt, Some(namespace.clone()));
-                }
-              } else if self.function_uses_use_translation(body) {
-                if let BindingPatternKind::BindingIdentifier(ident) = &var.id.kind {
-                  debug!(
-                    "Found custom i18n hook (arrow function): {} with default namespace",
-                    ident.name
-                  );
-                }
-                // This function uses useTranslation, so it's a custom i18n hook
-                for stmt in &body.statements {
-                  self.read_statement_for_t_calls(stmt, None);
-                }
-              }
-            }
-          }
-        }
-        _ => {}
-      }
-    }
-  }
-
-  fn detect_hook_namespace(&self, body: &FunctionBody) -> Option<String> {
-    // Look for useTranslation calls with namespace arguments
-    for stmt in &body.statements {
-      if let Some(namespace) = self.statement_has_use_translation_with_namespace(stmt) {
-        return Some(namespace);
-      }
-    }
-    None
-  }
-
-  fn statement_has_use_translation_with_namespace(&self, stmt: &Statement) -> Option<String> {
-    match stmt {
-      Statement::VariableDeclaration(var_decl) => {
-        for declarator in &var_decl.declarations {
-          if let Some(init) = &declarator.init {
-            if let Some(namespace) = self.expression_has_use_translation_with_namespace(init) {
-              return Some(namespace);
-            }
-          }
-        }
-      }
-      Statement::ExpressionStatement(expr_stmt) => {
-        if let Some(namespace) =
-          self.expression_has_use_translation_with_namespace(&expr_stmt.expression)
-        {
-          return Some(namespace);
-        }
-      }
-      Statement::ReturnStatement(ret_stmt) => {
-        if let Some(expr) = &ret_stmt.argument {
-          if let Some(namespace) = self.expression_has_use_translation_with_namespace(expr) {
-            return Some(namespace);
-          }
-        }
-      }
-      _ => {}
-    }
-    None
-  }
-
-  fn expression_has_use_translation_with_namespace(&self, expr: &Expression) -> Option<String> {
-    match expr {
-      Expression::CallExpression(call) => {
-        match &call.callee {
-          Expression::Identifier(ident) => {
-            if self.is_hook_identifier(ident) {
-              // Check if this useTranslation call has a namespace argument
-              if let Some(arg) = call.arguments.get(0) {
-                if let Some(expr) = arg.as_expression() {
-                  return self.walk_utils.read_str_expression(expr);
-                }
-              }
-            }
-          }
-          _ => {}
-        }
-      }
-      _ => {}
-    }
-    None
-  }
-
-  fn function_uses_use_translation(&self, body: &FunctionBody) -> bool {
-    for stmt in &body.statements {
-      if self.statement_uses_use_translation(stmt) {
-        return true;
-      }
-    }
-    false
-  }
-
-  fn statement_uses_use_translation(&self, stmt: &Statement) -> bool {
-    match stmt {
-      Statement::VariableDeclaration(var_decl) => {
-        for declarator in &var_decl.declarations {
-          if let Some(init) = &declarator.init {
-            if self.expression_uses_use_translation(init) {
-              return true;
-            }
-          }
-        }
-      }
-      Statement::ExpressionStatement(expr_stmt) => {
-        if self.expression_uses_use_translation(&expr_stmt.expression) {
-          return true;
-        }
-      }
-      Statement::ReturnStatement(ret_stmt) => {
-        if let Some(expr) = &ret_stmt.argument {
-          if self.expression_uses_use_translation(expr) {
-            return true;
-          }
-        }
-      }
-      _ => {}
-    }
-    false
-  }
-
-  fn expression_uses_use_translation(&self, expr: &Expression) -> bool {
-    match expr {
-      Expression::CallExpression(call) => match &call.callee {
-        Expression::Identifier(ident) => {
-          return self.is_hook_identifier(ident);
-        }
-        _ => false,
-      },
-      _ => false,
     }
   }
 
@@ -1191,51 +939,6 @@ impl<'a> Walker<'a> {
     } else {
       debug!("Key '{}' already exists in namespace '{}'", key, namespace);
     }
-  }
-
-  fn detect_custom_hook_namespace(&self, hook_name: &str) -> Option<String> {
-    // Detect custom hooks by analyzing their function bodies and extracting
-    // the namespace argument from internal useTranslation calls.
-    self
-      .semantic
-      .nodes()
-      .iter()
-      .find_map(|node| match node.kind() {
-        AstKind::VariableDeclarator(var) => {
-          let Some(init) = &var.init else {
-            return None;
-          };
-
-          let matches_name = matches!(
-            &var.id.kind,
-            BindingPatternKind::BindingIdentifier(ident) if ident.name == hook_name
-          );
-
-          if !matches_name {
-            return None;
-          }
-
-          match init {
-            Expression::ArrowFunctionExpression(func) => self.detect_hook_namespace(&func.body),
-            Expression::FunctionExpression(func) => func
-              .body
-              .as_ref()
-              .and_then(|body| self.detect_hook_namespace(body)),
-            _ => None,
-          }
-        }
-        AstKind::Function(function) => function.id.as_ref().and_then(|ident| {
-          if ident.name == hook_name {
-            function
-              .body
-              .as_ref()
-              .and_then(|body| self.detect_hook_namespace(body))
-          } else {
-            None
-          }
-        }),
-        _ => None,
-      })
   }
 
   fn is_custom_hook_call(
