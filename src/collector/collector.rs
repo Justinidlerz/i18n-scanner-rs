@@ -75,7 +75,7 @@ mod tests {
   fn full_collect() {
     let (_, collector) = collect("index.tsx".into(), None);
 
-    assert_eq!(collector.i18n_namespaces.len(), 4);
+    assert_eq!(collector.i18n_namespaces.len(), 5);
 
     println!("default {:?}", collector.get_keys("default"));
 
@@ -83,6 +83,7 @@ mod tests {
     assert_eq!(collector.get_keys("namespace_1").len(), 2);
     assert_eq!(collector.get_keys("namespace_2").len(), 1);
     assert_eq!(collector.get_keys("namespace_3").len(), 2);
+    assert_eq!(collector.get_keys("namespace_4").len(), 1);
   }
 
   key_match!(
@@ -193,6 +194,8 @@ mod tests {
     "I18nCodeDynamic.tsx".into(),
     vec!["I18N_CODE_DYNAMIC_hello", "I18N_CODE_DYNAMIC_world"]
   );
+
+  key_match!(custom_hook, "CustomHook.tsx".into(), vec!["CUSTOM_HOOK"]);
 
   #[test]
   fn collect_custom_i18n_package() {
