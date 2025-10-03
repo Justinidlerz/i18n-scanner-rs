@@ -2,7 +2,9 @@
   "compilerOptions": {
     "jsx": "preserve",
     "baseUrl": ".",
-    "paths": {}
+    "paths": {
+      "@custom/i18n": ["../custom-i18n/index.ts"]
+    }
   },
   "include": ["src"]
 }

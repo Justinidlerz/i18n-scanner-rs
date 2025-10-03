@@ -1,6 +1,7 @@
 use crate::analyzer::analyzer::Analyzer;
 use crate::node::i18n_types::{I18nMember, I18nType};
 use crate::node::node::Node;
+use std::collections::HashSet;
 use std::mem::{self, Discriminant};
 use std::path::Path;
 use std::rc::Rc;
@@ -25,6 +26,17 @@ pub static PRESET_I18N_MEMBERS: &[(&str, I18nType)] = &[
   ("withTranslation", I18nType::HocWrapper),
   ("i18n", I18nType::ObjectMemberT),
 ];
+
+fn default_members() -> Vec<Member> {
+  PRESET_I18N_MEMBERS
+    .iter()
+    .map(|(name, r#type)| Member {
+      name: (*name).to_string(),
+      r#type: r#type.clone(),
+      ns: None,
+    })
+    .collect()
+}
 
 #[derive(Clone)]
 #[napi(object)]
@@ -74,18 +86,9 @@ impl Analyzer {
       // resolve packages and confirm it's installed
       if let Ok(res) = self.resolver.resolve(basename, pkg_name) {
         if let Some(path_str) = res.path().to_str() {
-          let mut members = Vec::new();
-          for (name, r#type) in PRESET_I18N_MEMBERS {
-            members.push(Member {
-              name: name.to_string(),
-              r#type: r#type.clone(),
-              ns: None,
-            })
-          }
-
           methods.push(I18nPackage {
             package_path: path_str.to_string(),
-            members,
+            members: default_members(),
           })
         }
       }
@@ -108,9 +111,31 @@ impl Analyzer {
         for pkg in &packages {
           if let Ok(res) = self.resolver.resolve(basename, &pkg.package_path) {
             if let Some(path_str) = res.path().to_str() {
+              let mut members = pkg.members.clone();
+              if members.is_empty() {
+                members = default_members();
+              }
+
+              let mut registered_types: HashSet<Discriminant<I18nType>> = members
+                .iter()
+                .map(|member| discriminant_of(&member.r#type))
+                .collect();
+
+              for (name, preset_type) in PRESET_I18N_MEMBERS {
+                let preset_discriminant = discriminant_of(preset_type);
+                if !registered_types.contains(&preset_discriminant) {
+                  members.push(Member {
+                    name: (*name).to_string(),
+                    r#type: preset_type.clone(),
+                    ns: None,
+                  });
+                  registered_types.insert(preset_discriminant);
+                }
+              }
+
               pkgs.push(I18nPackage {
                 package_path: path_str.to_string(),
-                members: pkg.members.clone(),
+                members,
               });
             }
           }
