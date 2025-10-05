@@ -37,4 +37,5 @@ pub enum I18nType {
 pub struct I18nMember {
   pub r#type: I18nType,
   pub ns: Option<String>,
+  pub is_extend: bool,
 }

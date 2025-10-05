@@ -50,6 +50,7 @@ pub struct Member {
 pub struct I18nPackage {
   pub package_path: String,
   pub members: Vec<Member>,
+  pub is_extend: bool,
 }
 
 impl Analyzer {
@@ -60,15 +61,22 @@ impl Analyzer {
   ) -> &mut Self {
     let i18n_packages = self.extend_i18n_packages(entry_path, extend_i18n_packages);
     for package in i18n_packages {
-      let file_path_ref = Rc::new(package.package_path);
+      let I18nPackage {
+        package_path,
+        members,
+        is_extend,
+      } = package;
+
+      let file_path_ref = Rc::new(package_path);
       let node = Rc::new(Node::new(file_path_ref.clone(), self.node_store.clone()));
 
-      for member in package.members {
+      for member in members {
         node.insert_exporting(
           member.name,
           Some(I18nMember {
             r#type: member.r#type,
             ns: member.ns,
+            is_extend,
           }),
         );
       }
@@ -89,6 +97,7 @@ impl Analyzer {
           methods.push(I18nPackage {
             package_path: path_str.to_string(),
             members: default_members(),
+            is_extend: false,
           })
         }
       }
@@ -136,6 +145,7 @@ impl Analyzer {
               pkgs.push(I18nPackage {
                 package_path: path_str.to_string(),
                 members,
+                is_extend: true,
               });
             }
           }

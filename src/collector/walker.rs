@@ -28,6 +28,7 @@ pub struct Walker<'a> {
   t_symbol_ids: HashSet<SymbolId>,
   t_function_names: HashSet<String>,
   translation_member_names: HashSet<String>,
+  processed_hook_symbols: HashSet<SymbolId>,
 }
 
 impl<'a> Walker<'a> {
@@ -41,6 +42,7 @@ impl<'a> Walker<'a> {
       t_symbol_ids: HashSet::new(),
       t_function_names: HashSet::new(),
       translation_member_names: HashSet::new(),
+      processed_hook_symbols: HashSet::new(),
     }
   }
 
@@ -168,6 +170,8 @@ impl<'a> Walker<'a> {
     s: &OxcBox<ImportSpecifier>,
     defined_ns: Option<String>,
     members: &HashMap<String, Option<I18nMember>>,
+    is_extend_package: bool,
+    import_source: &str,
   ) {
     let local_symbol_id = s.local.symbol_id();
 
@@ -175,58 +179,182 @@ impl<'a> Walker<'a> {
     self.register_translation_names(translation_names.iter().cloned());
     let is_standard_hook = self.is_standard_hook_export(s.imported.name().as_str());
 
+    self.process_hook_symbol(
+      local_symbol_id,
+      defined_ns,
+      &translation_names,
+      is_standard_hook,
+      false,
+      is_extend_package,
+      Some(import_source.to_string()),
+    );
+  }
+
+  fn process_hook_symbol(
+    &mut self,
+    symbol_id: SymbolId,
+    defined_ns: Option<String>,
+    translation_names: &HashSet<String>,
+    is_standard_hook: bool,
+    is_alias: bool,
+    is_extend_package: bool,
+    import_source: Option<String>,
+  ) {
+    if !self.processed_hook_symbols.insert(symbol_id) {
+      return;
+    }
+
+    let mut alias_symbols: HashSet<(SymbolId, Option<String>)> = HashSet::new();
+
     self
       .semantic
-      .symbol_references(local_symbol_id)
+      .symbol_references(symbol_id)
       .for_each(|ref_item| {
         if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
-          // Check if this is a custom hook call (direct call with arguments)
           if let AstKind::CallExpression(call) = node.kind() {
-            // This is a direct call to the hook, check if it's a custom i18n hook
-            debug!("Found hook call: {}", s.imported.name());
+            if let Some((alias_symbol, namespace)) =
+              self.detect_hook_alias(node, call, defined_ns.clone())
+            {
+              alias_symbols.insert((alias_symbol, namespace));
+            }
+
             if self.is_custom_hook_call(call, is_standard_hook, defined_ns.as_deref()) {
-              debug!("Handling custom hook call: {}", s.imported.name());
-              self.handle_custom_hook_call(call, defined_ns.clone());
+              self.handle_custom_hook_call(call, defined_ns.clone(), import_source.as_deref());
               return;
             }
           }
 
-          // Standard useTranslation pattern
           if let Some(assign_node) = self.semantic.nodes().parent_node(node.id()) {
-            // const xyz = useTranslation();
-            let AstKind::VariableDeclarator(var) = assign_node.kind() else {
-              return;
+            let namespace = match node.kind() {
+              AstKind::CallExpression(call) => self
+                .walk_utils
+                .read_hook_namespace_argument(&call)
+                .or_else(|| defined_ns.clone()),
+              _ => defined_ns.clone(),
             };
 
-            let namespace = match node.kind() {
-              AstKind::CallExpression(call) => self.walk_utils.read_hook_namespace_argument(&call),
-              _ => None,
-            }
-            .or_else(|| defined_ns.clone());
-
-            match &var.id.kind {
-              // const { t } = useTranslation();
-              BindingPatternKind::ObjectPattern(obj) => obj.properties.iter().for_each(|prop| {
-                if let PropertyKey::StaticIdentifier(key) = &prop.key {
-                  if translation_names.contains(key.name.as_str())
-                    || self.is_known_t_name(key.name.as_str())
-                  {
-                    if let BindingPatternKind::BindingIdentifier(ident) = &prop.value.kind {
-                      self.register_t_symbol(ident.symbol_id(), ident.name.as_str());
-                      self.read_t(ident.symbol_id(), namespace.clone());
+            if let AstKind::VariableDeclarator(var) = assign_node.kind() {
+              match &var.id.kind {
+                BindingPatternKind::ObjectPattern(obj) => {
+                  obj.properties.iter().for_each(|prop| {
+                    if let PropertyKey::StaticIdentifier(key) = &prop.key {
+                      if translation_names.contains(key.name.as_str())
+                        || self.is_known_t_name(key.name.as_str())
+                      {
+                        if let BindingPatternKind::BindingIdentifier(ident) = &prop.value.kind {
+                          self.register_t_symbol(ident.symbol_id(), ident.name.as_str());
+                          let ns = namespace.clone();
+                          if !is_alias || !is_extend_package {
+                            self.read_t(ident.symbol_id(), ns.clone());
+                          }
+                        }
+                      }
                     }
+                  });
+                }
+                BindingPatternKind::BindingIdentifier(ident) => {
+                  if !is_alias || !is_extend_package {
+                    self.read_object_member_t(ident.symbol_id(), namespace.clone());
                   }
                 }
-              }),
-              // const trans = useTranslation();
-              BindingPatternKind::BindingIdentifier(ident) => {
-                self.read_object_member_t(ident.symbol_id(), namespace)
+                _ => {}
               }
-              _ => {}
             }
           }
         }
       });
+
+    for (alias_symbol, namespace) in alias_symbols {
+      self.process_hook_symbol(
+        alias_symbol,
+        namespace,
+        translation_names,
+        is_standard_hook,
+        true,
+        is_extend_package,
+        import_source.clone(),
+      );
+    }
+  }
+
+  fn detect_hook_alias(
+    &self,
+    call_node: &oxc_semantic::AstNode<'a>,
+    call: &CallExpression,
+    defined_ns: Option<String>,
+  ) -> Option<(SymbolId, Option<String>)> {
+    let mut current = Some(call_node);
+    let namespace = self
+      .walk_utils
+      .read_hook_namespace_argument(call)
+      .or(defined_ns.clone());
+
+    while let Some(node) = current {
+      if let Some(parent) = self.semantic.nodes().parent_node(node.id()) {
+        match parent.kind() {
+          AstKind::ReturnStatement(_)
+          | AstKind::ExpressionStatement(_)
+          | AstKind::BlockStatement(_) => {
+            current = Some(parent);
+            continue;
+          }
+          AstKind::ArrowFunctionExpression(_) => {
+            if let Some(grand) = self.semantic.nodes().parent_node(parent.id()) {
+              if let AstKind::VariableDeclarator(var) = grand.kind() {
+                if let BindingPatternKind::BindingIdentifier(ident) = &var.id.kind {
+                  debug!(
+                    "Detected hook alias via variable declarator with namespace: {:?}",
+                    namespace
+                  );
+                  return Some((ident.symbol_id(), namespace.clone()));
+                }
+              }
+            }
+            current = Some(parent);
+            continue;
+          }
+          AstKind::Function(func) => {
+            if let Some(grand) = self.semantic.nodes().parent_node(parent.id()) {
+              if let AstKind::VariableDeclarator(var) = grand.kind() {
+                if let BindingPatternKind::BindingIdentifier(ident) = &var.id.kind {
+                  debug!(
+                    "Detected hook alias via function assignment with namespace: {:?}",
+                    namespace
+                  );
+                  return Some((ident.symbol_id(), namespace.clone()));
+                }
+              }
+            }
+            if let Some(ident) = &func.id {
+              debug!(
+                "Detected hook alias via function declaration with namespace: {:?}",
+                namespace
+              );
+              return Some((ident.symbol_id(), namespace.clone()));
+            }
+            current = Some(parent);
+            continue;
+          }
+          AstKind::VariableDeclarator(var) => {
+            if let BindingPatternKind::BindingIdentifier(ident) = &var.id.kind {
+              debug!(
+                "Detected hook alias via direct assignment with namespace: {:?}",
+                namespace
+              );
+              return Some((ident.symbol_id(), namespace.clone()));
+            }
+            break;
+          }
+          _ => {
+            current = Some(parent);
+          }
+        }
+      } else {
+        break;
+      }
+    }
+
+    None
   }
 
   pub fn read_t_arguments(&mut self, call: &CallExpression, namespace: Option<String>) {
@@ -964,7 +1092,12 @@ impl<'a> Walker<'a> {
     !is_standard_hook && has_arguments && !has_namespace
   }
 
-  fn handle_custom_hook_call(&mut self, call: &CallExpression, defined_ns: Option<String>) {
+  fn handle_custom_hook_call(
+    &mut self,
+    call: &CallExpression,
+    defined_ns: Option<String>,
+    import_source: Option<&str>,
+  ) {
     // Handle custom i18n hook calls by analyzing the hook's implementation
     // and generating the appropriate keys
 
@@ -979,7 +1112,9 @@ impl<'a> Walker<'a> {
           debug!("Extracted input key: {}", input_key);
           // Now we need to resolve how this custom hook transforms the input
           // by analyzing its implementation
-          if let Some(transformed_key) = self.resolve_custom_hook_transformation(&input_key) {
+          if let Some(transformed_key) =
+            self.resolve_custom_hook_transformation(&input_key, import_source)
+          {
             debug!("Transformed key: {}", transformed_key);
             let namespace = defined_ns.unwrap_or_else(|| "default".to_string());
             self.add_key(&namespace, transformed_key);
@@ -999,7 +1134,11 @@ impl<'a> Walker<'a> {
     }
   }
 
-  fn resolve_custom_hook_transformation(&self, input_key: &str) -> Option<String> {
+  fn resolve_custom_hook_transformation(
+    &self,
+    input_key: &str,
+    import_source: Option<&str>,
+  ) -> Option<String> {
     // Analyze the custom hook's implementation to understand how it transforms the input
     // This requires looking at the hook's source file and understanding its logic
 
@@ -1012,7 +1151,7 @@ impl<'a> Walker<'a> {
     }
 
     // If not found in current file, try to find the hook's source file and analyze it
-    if let Some(hook_pattern) = self.analyze_imported_hook_implementation() {
+    if let Some(hook_pattern) = self.analyze_imported_hook_implementation(import_source) {
       debug!("Found hook pattern in imported file: {}", hook_pattern);
       return self.apply_hook_pattern(&hook_pattern, input_key);
     }
@@ -1021,7 +1160,7 @@ impl<'a> Walker<'a> {
     None
   }
 
-  fn analyze_imported_hook_implementation(&self) -> Option<String> {
+  fn analyze_imported_hook_implementation(&self, import_source: Option<&str>) -> Option<String> {
     // Try to find the hook's implementation in imported files
     // This is a simplified approach for the test case
 
@@ -1030,11 +1169,12 @@ impl<'a> Walker<'a> {
     // corresponds to the hook being called
 
     // Look through the node's importing relationships to find hook implementations
-    if let Some(importing_node) = self.node.get_importing_node("./hook") {
-      // Parse the importing file and look for hook patterns
-      if let Some(pattern) = self.analyze_file_for_hook_pattern(&importing_node.file_path) {
-        return Some(pattern);
-      }
+    let Some(source) = import_source else {
+      return None;
+    };
+
+    if let Some(importing_node) = self.node.get_importing_node(source) {
+      return self.analyze_file_for_hook_pattern(&importing_node.file_path);
     }
 
     None

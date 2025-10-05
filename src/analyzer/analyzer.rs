@@ -113,7 +113,7 @@ mod tests {
   fn node_include_i18n_import() {
     let (_, node_store) = analyze("index.tsx".into(), None);
 
-    assert_eq!(node_store.get_all_i18n_nodes().len(), 22);
+    assert_eq!(node_store.get_all_i18n_nodes().len(), 23);
   }
 
   #[test]

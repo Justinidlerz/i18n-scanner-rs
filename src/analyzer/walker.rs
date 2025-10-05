@@ -235,6 +235,7 @@ impl<'a> Walker<'a> {
           return Some(I18nMember {
             r#type: crate::node::i18n_types::I18nType::Hook,
             ns: None,
+            is_extend: false,
           });
         }
 
@@ -305,6 +306,7 @@ impl<'a> Walker<'a> {
           return Some(I18nMember {
             r#type: member.r#type.clone(),
             ns,
+            is_extend: member.is_extend,
           });
         }
         None

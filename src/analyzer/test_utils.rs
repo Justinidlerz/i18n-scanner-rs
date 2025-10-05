@@ -47,6 +47,7 @@ pub fn make_extend_packages() -> Vec<I18nPackage> {
       name: "useFeTranslation".to_string(),
       ns: Some("namespace_3".into()),
     }],
+    is_extend: true,
   }]
 }
 
@@ -54,5 +55,6 @@ pub fn make_custom_i18n_package() -> Vec<I18nPackage> {
   vec![I18nPackage {
     package_path: "@custom/i18n".into(),
     members: vec![],
+    is_extend: true,
   }]
 }

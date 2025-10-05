@@ -14,7 +14,13 @@ impl<'a> Visit<'a> for Walker<'a> {
               if let Some(Some(member)) = members.get(s.imported.name().as_str()) {
                 match member.r#type {
                   I18nType::Hook => {
-                    self.read_hook(s, member.ns.clone(), &members);
+                    self.read_hook(
+                      s,
+                      member.ns.clone(),
+                      &members,
+                      member.is_extend,
+                      it.source.value.as_str(),
+                    );
                   }
                   I18nType::TMethod => {
                     self.register_t_symbol(s.local.symbol_id(), s.local.name.as_str());

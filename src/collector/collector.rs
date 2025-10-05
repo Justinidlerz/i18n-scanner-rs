@@ -55,13 +55,26 @@ impl Collector {
   }
 
   pub fn get_keys(&self, namespace: &str) -> Vec<String> {
-    let default = Vec::<String>::new();
+    if let Some(keys) = self.i18n_namespaces.get(namespace) {
+      if namespace != "default" || !keys.is_empty() {
+        return keys.clone();
+      }
+    }
 
-    self
-      .i18n_namespaces
-      .get(namespace)
-      .unwrap_or(&default)
-      .clone()
+    if namespace == "default" {
+      let mut non_default_namespaces = self
+        .i18n_namespaces
+        .iter()
+        .filter(|(ns, keys)| ns.as_str() != "default" && !keys.is_empty());
+
+      if let (Some((_, keys)), None) =
+        (non_default_namespaces.next(), non_default_namespaces.next())
+      {
+        return keys.clone();
+      }
+    }
+
+    Vec::new()
   }
 }
 
@@ -196,6 +209,12 @@ mod tests {
   );
 
   key_match!(custom_hook, "CustomHook.tsx".into(), vec!["CUSTOM_HOOK"]);
+
+  key_match!(
+    wrap_use_translation_nested,
+    "WrapUseTranslationAlt/Component.tsx".into(),
+    vec!["WRAPPED_USE_TRANSLATION_ALT"]
+  );
 
   #[test]
   fn collect_custom_i18n_package() {
