@@ -1,12 +1,13 @@
 use super::walker::Walker;
-use crate::node::i18n_types::I18nType;
+use crate::node::i18n_types::{I18nMember, I18nType};
 use oxc_ast::ast::{ImportDeclaration, ImportDeclarationSpecifier};
 use oxc_ast_visit::Visit;
+use std::collections::HashMap;
 
 impl<'a> Visit<'a> for Walker<'a> {
   fn visit_import_declaration(&mut self, it: &ImportDeclaration<'a>) {
-    if let Some(i18n_source) = self.node.get_importing_node(&it.source.value) {
-      if let Some(specifiers) = &it.specifiers {
+    if let Some(specifiers) = &it.specifiers {
+      if let Some(i18n_source) = self.node.get_importing_node(&it.source.value) {
         let members = i18n_source.get_exporting_members();
         for specifier in specifiers {
           match specifier {
@@ -35,6 +36,14 @@ impl<'a> Visit<'a> for Walker<'a> {
                     self.read_hoc_wrapper(s.local.symbol_id(), member.ns.clone());
                   }
                 }
+              } else if self.is_standard_hook_export(s.imported.name().as_str()) {
+                let empty_members: HashMap<String, Option<I18nMember>> = HashMap::new();
+                let translation_names = Walker::collect_t_member_names(&empty_members);
+                self.register_translation_names(translation_names.clone());
+                self.read_hook(s, None, &empty_members);
+              } else if s.imported.name().as_str() == "t" {
+                self.register_t_symbol(s.local.symbol_id(), s.local.name.as_str());
+                self.read_t(s.local.symbol_id(), None);
               }
             }
             ImportDeclarationSpecifier::ImportNamespaceSpecifier(ns_spec) => {
@@ -50,6 +59,21 @@ impl<'a> Visit<'a> for Walker<'a> {
               }
             }
             _ => {}
+          }
+        }
+      } else {
+        for specifier in specifiers {
+          if let ImportDeclarationSpecifier::ImportSpecifier(s) = specifier {
+            let imported_name = s.imported.name().as_str();
+            if self.is_standard_hook_export(imported_name) {
+              let empty_members: HashMap<String, Option<_>> = HashMap::new();
+              let translation_names = Walker::collect_t_member_names(&empty_members);
+              self.register_translation_names(translation_names.clone());
+              self.read_hook(s, None, &empty_members);
+            } else if imported_name == "t" {
+              self.register_t_symbol(s.local.symbol_id(), s.local.name.as_str());
+              self.read_t(s.local.symbol_id(), None);
+            }
           }
         }
       }

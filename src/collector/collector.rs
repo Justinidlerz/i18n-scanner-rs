@@ -24,7 +24,7 @@ impl Collector {
   }
 
   pub fn collect_keys(&mut self) -> &mut Self {
-    let i18n_nodes = self.node_store.get_all_i18n_nodes();
+    let i18n_nodes = self.node_store.get_all_nodes();
 
     // let post_collects =
     for (_, node) in i18n_nodes.iter() {

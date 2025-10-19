@@ -44,6 +44,9 @@ describe("I18n-scanner-rs", () => {
               "NAMESPACE_FROM_VAR",
               "WRAPPED_USE_TRANSLATION_NS",
             ],
+            "namespace_4": [
+              "CUSTOM_HOOK_INLINE",
+            ],
           }
         `)
     })
