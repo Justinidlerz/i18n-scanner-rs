@@ -67,9 +67,11 @@ impl Collector {
 
 #[cfg(test)]
 mod tests {
+  use crate::analyzer::i18n_packages::{I18nPackage, Member};
   use crate::analyzer::test_utils::make_custom_i18n_package;
   use crate::collector::test_utils::{collect, collect_with_options};
   use crate::key_match;
+  use crate::node::i18n_types::I18nType;
 
   #[test]
   fn full_collect() {
@@ -192,6 +194,21 @@ mod tests {
     i18n_code_dynamic,
     "I18nCodeDynamic.tsx".into(),
     vec!["I18N_CODE_DYNAMIC_hello", "I18N_CODE_DYNAMIC_world"]
+  );
+
+  key_match!(
+    i18n_hook_inline,
+    "CustomHookInline.tsx".into(),
+    "namespace_4".into(),
+    vec![I18nPackage {
+      package_path: "@custom/i18n".into(),
+      members: vec![Member {
+        ns: None,
+        name: "useTranslation".into(),
+        r#type: I18nType::Hook
+      }]
+    }],
+    vec!["CUSTOM_HOOK_INLINE"]
   );
 
   #[test]
