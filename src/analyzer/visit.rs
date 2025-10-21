@@ -72,29 +72,24 @@ impl<'a> Visit<'a> for Walker<'a> {
 
             match &specifier.local {
               ModuleExportName::IdentifierReference(ident) => {
-                // This branch must panic when references cannot be resolved to avoid silent export failures.
-                let Some(reference_id) = ident.reference_id.get() else {
-                  panic!(
-                    "[i18n-scanner-rs] missing reference for exported member '{}' in file '{}'",
+                let resolved_member = ident.reference_id.get().and_then(|reference_id| {
+                  self.walk_utils
+                    .get_var_defined_node(reference_id)
+                    .and_then(|node| match node.kind() {
+                      AstKind::VariableDeclarator(decl) => self.resolve_i18n_export(&decl),
+                      _ => None,
+                    })
+                });
+
+                if resolved_member.is_none() {
+                  log::debug!(
+                    "[i18n-scanner-rs] unable to resolve exported member '{}' in file '{}'",
                     exported_name,
                     self.walk_utils.node.file_path.as_str()
                   );
-                };
-
-                let Some(node) = self.walk_utils.get_var_defined_node(reference_id) else {
-                  panic!(
-                    "[i18n-scanner-rs] missing declaration for exported member '{}' in file '{}'",
-                    exported_name,
-                    self.walk_utils.node.file_path.as_str()
-                  );
-                };
-
-                match node.kind() {
-                  AstKind::VariableDeclarator(decl) => {
-                    return (exported_name, self.resolve_i18n_export(&decl));
-                  }
-                  _ => (exported_name, None),
                 }
+
+                (exported_name, resolved_member)
               }
               _ => (exported_name, None),
             }
