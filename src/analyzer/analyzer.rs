@@ -58,13 +58,16 @@ impl Analyzer {
       node.insert_imports(path.clone());
     }
 
-    let source_text = fs::read_to_string(file_path_ref.clone().as_str()).expect(
-      format!(
-        "[i18n-scanner-rs] Not sure file or directory at: {}",
-        file_path_ref
-      )
-      .as_str(),
-    );
+    let source_text = match fs::read_to_string(file_path_ref.as_ref()) {
+      Ok(source) => source,
+      Err(err) => {
+        log::warn!(
+          "[i18n-scanner-rs] Unable to read file at {}: {err}",
+          file_path_ref
+        );
+        return None;
+      }
+    };
 
     self.node_store.insert_node(file_path_ref, node.clone());
 

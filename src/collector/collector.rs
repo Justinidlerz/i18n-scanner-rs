@@ -24,11 +24,28 @@ impl Collector {
   }
 
   pub fn collect_keys(&mut self) -> &mut Self {
-    let i18n_nodes = self.node_store.get_all_nodes();
+    let i18n_nodes = self.node_store.get_all_i18n_nodes();
 
     // let post_collects =
     for (_, node) in i18n_nodes.iter() {
-      let source_text = fs::read_to_string(&node.file_path.as_str()).unwrap();
+      if node.file_path.ends_with(".d.ts") {
+        log::debug!(
+          "[i18n-scanner-rs] skipping declaration file '{}'",
+          node.file_path
+        );
+        continue;
+      }
+
+      let source_text = match fs::read_to_string(node.file_path.as_str()) {
+        Ok(text) => text,
+        Err(err) => {
+          log::warn!(
+            "[i18n-scanner-rs] Unable to read file at {}: {err}",
+            node.file_path
+          );
+          continue;
+        }
+      };
       let parser = Parser::new(&self.allocator, &source_text, node.source_type);
       let mut program = parser.parse().program;
 
