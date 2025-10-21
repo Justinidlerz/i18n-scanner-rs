@@ -48,6 +48,11 @@ impl<'a> Visit<'a> for Walker<'a> {
   // export { foo } from './xyz';
   // export const a = "xyz";
   fn visit_export_named_declaration(&mut self, it: &ExportNamedDeclaration<'a>) {
+    if it.export_kind.is_type() {
+      // Type-only exports never create runtime bindings, so there is nothing to resolve for i18n.
+      return;
+    }
+
     if it.specifiers.len() > 0 {
       // export { foo } from './xyz';
       if let Some(source) = &it.source {
@@ -62,26 +67,29 @@ impl<'a> Visit<'a> for Walker<'a> {
         let exports = it
           .specifiers
           .iter()
-          .map(|specifier| match &specifier.local {
-            ModuleExportName::IdentifierReference(ident) => {
-              let Some(node) = self
-                .walk_utils
-                .get_var_defined_node(ident.reference_id.get().unwrap())
-              else {
-                return (specifier.exported.name().to_string(), None);
-              };
+          .map(|specifier| {
+            let exported_name = specifier.exported.name().to_string();
 
-              match node.kind() {
-                AstKind::VariableDeclarator(decl) => {
-                  return (
-                    specifier.exported.name().to_string(),
-                    self.resolve_i18n_export(&decl),
-                  )
+            match &specifier.local {
+              ModuleExportName::IdentifierReference(ident) => {
+                // Gracefully skip identifiers that are not bound to a reference to avoid panics.
+                let Some(reference_id) = ident.reference_id.get() else {
+                  return (exported_name, None);
+                };
+
+                let Some(node) = self.walk_utils.get_var_defined_node(reference_id) else {
+                  return (exported_name, None);
+                };
+
+                match node.kind() {
+                  AstKind::VariableDeclarator(decl) => {
+                    return (exported_name, self.resolve_i18n_export(&decl));
+                  }
+                  _ => (exported_name, None),
                 }
-                _ => (specifier.exported.name().to_string(), None),
               }
+              _ => (exported_name, None),
             }
-            _ => (specifier.exported.name().to_string(), None),
           })
           .collect::<Vec<(String, Option<I18nMember>)>>();
 
@@ -138,10 +146,13 @@ fn collect_deconstructed_array_export(arr: &ArrayPattern) -> Vec<(String, Option
   arr
     .elements
     .iter()
-    .filter_map(|ele| {
-      let ele_ref = ele.as_ref();
+    .filter_map(|element| {
+      // Skip empty slots in the array pattern (e.g. [, value])
+      let Some(pattern) = element.as_ref() else {
+        return None;
+      };
 
-      match &ele_ref.unwrap().kind {
+      match &pattern.kind {
         BindingPatternKind::BindingIdentifier(ident) => Some((ident.name.to_string(), None)),
         _ => None,
       }
