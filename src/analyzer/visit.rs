@@ -72,13 +72,21 @@ impl<'a> Visit<'a> for Walker<'a> {
 
             match &specifier.local {
               ModuleExportName::IdentifierReference(ident) => {
-                // Gracefully skip identifiers that are not bound to a reference to avoid panics.
+                // This branch must panic when references cannot be resolved to avoid silent export failures.
                 let Some(reference_id) = ident.reference_id.get() else {
-                  return (exported_name, None);
+                  panic!(
+                    "[i18n-scanner-rs] missing reference for exported member '{}' in file '{}'",
+                    exported_name,
+                    self.walk_utils.node.file_path.as_str()
+                  );
                 };
 
                 let Some(node) = self.walk_utils.get_var_defined_node(reference_id) else {
-                  return (exported_name, None);
+                  panic!(
+                    "[i18n-scanner-rs] missing declaration for exported member '{}' in file '{}'",
+                    exported_name,
+                    self.walk_utils.node.file_path.as_str()
+                  );
                 };
 
                 match node.kind() {
