@@ -21,6 +21,8 @@ import NamespaceOverride from './NamespaceOverride'
 import { memberT } from './memberT'
 import NamespaceFromVar from './NamespaceFromVar'
 import CustomHookInline from './CustomHookInline'
+import TArray from './TArray'
+import TArrayFromCustom from './TArrayFromCustom'
 
 init()
 
@@ -49,6 +51,8 @@ const Entry = () => {
       <MemberCallT />
       <NamespaceImport />
       <I18nCodeCrossFile />
+      <TArray />
+      <TArrayFromCustom />
     </>
   )
 }

@@ -213,6 +213,17 @@ mod tests {
     "I18nCodeDynamic.tsx".into(),
     vec!["I18N_CODE_DYNAMIC_hello", "I18N_CODE_DYNAMIC_world"]
   );
+  key_match!(
+    t_array,
+    "TArray.tsx".into(),
+    vec!["T_ARRAY"]
+  );
+    key_match!(
+    t_array_custom,
+    "TArrayFromCustom.tsx".into(),
+    vec!["T_ARRAY_FROM_CUSTOM"]
+  );
+  
 
   key_match!(
     i18n_hook_inline,
