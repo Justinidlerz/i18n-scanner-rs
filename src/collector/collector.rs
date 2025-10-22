@@ -98,7 +98,7 @@ mod tests {
 
     println!("default {:?}", collector.get_keys("default"));
 
-    assert_eq!(collector.get_keys("default").len(), 16);
+    assert_eq!(collector.get_keys("default").len(), 18);
     assert_eq!(collector.get_keys("namespace_1").len(), 2);
     assert_eq!(collector.get_keys("namespace_2").len(), 1);
     assert_eq!(collector.get_keys("namespace_3").len(), 2);
@@ -213,17 +213,12 @@ mod tests {
     "I18nCodeDynamic.tsx".into(),
     vec!["I18N_CODE_DYNAMIC_hello", "I18N_CODE_DYNAMIC_world"]
   );
+  key_match!(t_array, "TArray.tsx".into(), vec!["T_ARRAY"]);
   key_match!(
-    t_array,
-    "TArray.tsx".into(),
-    vec!["T_ARRAY"]
-  );
-    key_match!(
     t_array_custom,
     "TArrayFromCustom.tsx".into(),
     vec!["T_ARRAY_FROM_CUSTOM"]
   );
-  
 
   key_match!(
     i18n_hook_inline,
