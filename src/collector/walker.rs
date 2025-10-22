@@ -6,10 +6,10 @@ use crate::walk_utils::WalkerUtils;
 use log::debug;
 use oxc_allocator::Box as OxcBox;
 use oxc_ast::ast::{
-  BinaryExpression, BinaryOperator, BindingPatternKind, CallExpression, Expression,
-  IdentifierReference, ImportSpecifier, JSXAttributeItem, JSXAttributeName, JSXAttributeValue,
-  JSXChild, JSXElement, JSXExpression, JSXFragment, JSXOpeningElement, ObjectPropertyKind,
-  PropertyKey, SourceType, Statement, VariableDeclarator,
+  ArrayPattern, BinaryExpression, BinaryOperator, BindingPattern, BindingPatternKind,
+  CallExpression, Expression, IdentifierReference, ImportSpecifier, JSXAttributeItem,
+  JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXExpression, JSXFragment,
+  JSXOpeningElement, ObjectPropertyKind, PropertyKey, SourceType, Statement, VariableDeclarator,
 };
 use oxc_ast::AstKind;
 use oxc_semantic::{AstNode, Semantic};
@@ -133,6 +133,8 @@ impl<'a> Walker<'a> {
   }
 
   pub fn read_object_member_t(&mut self, symbol_id: SymbolId, defined_ns: Option<String>) {
+    let namespace = defined_ns.clone();
+
     self
       .semantic
       .symbol_references(symbol_id)
@@ -146,18 +148,44 @@ impl<'a> Walker<'a> {
                 if self.is_known_t_name(prop) {
                   if let Some(call_node) = self.semantic.nodes().parent_node(node.id()) {
                     if let AstKind::CallExpression(call) = call_node.kind() {
-                      self.read_t_arguments(call, defined_ns.clone());
+                      self.read_t_arguments(call, namespace.clone());
                     }
                   }
                 }
               });
             }
-            // deconstruct case
-            // const { t } = xyz;
-            AstKind::VariableDeclaration(_var) => {
-              // TODO: Deconstruct t from useTranslation case
+            _ => {
+              let mut bindings_to_register: Vec<(SymbolId, String)> = Vec::new();
+
+              if let Some(var_node_id) = self.find_enclosing_variable_declarator(node) {
+                let var_node = self.semantic.nodes().get_node(var_node_id);
+                if let AstKind::VariableDeclarator(var) = var_node.kind() {
+                  if let Some(init) = &var.init {
+                    if let Expression::Identifier(init_ident) = init {
+                      let init_symbol = self
+                        .semantic
+                        .scoping()
+                        .get_reference(init_ident.reference_id())
+                        .symbol_id();
+
+                      if init_symbol == Some(symbol_id) {
+                        self.collect_translation_bindings(
+                          &var.id,
+                          false,
+                          &mut bindings_to_register,
+                        );
+                      }
+                    }
+                  }
+                }
+              }
+
+              for (binding_symbol, binding_name) in bindings_to_register {
+                // Register destructured translation bindings and process their usages.
+                self.register_t_symbol(binding_symbol, &binding_name);
+                self.read_t(binding_symbol, namespace.clone());
+              }
             }
-            _ => {}
           }
         }
       })
@@ -178,7 +206,6 @@ impl<'a> Walker<'a> {
     self.process_hook_symbol_references(
       local_symbol_id,
       defined_ns,
-      &translation_names,
       is_standard_hook,
       &mut visited_symbols,
     );
@@ -279,46 +306,11 @@ impl<'a> Walker<'a> {
                                 .walk_utils
                                 .read_hook_namespace_argument(call)
                                 .or_else(|| member_info.ns.clone());
+                              let translation_names = Self::collect_t_member_names(members);
+                              self.register_translation_names(translation_names.iter().cloned());
 
-                              match &var.id.kind {
-                                BindingPatternKind::ObjectPattern(obj) => {
-                                  let translation_names = Self::collect_t_member_names(members);
-
-                                  obj.properties.iter().for_each(|prop| {
-                                    if let PropertyKey::StaticIdentifier(key) = &prop.key {
-                                      if translation_names.contains(key.name.as_str())
-                                        || self.is_known_t_name(key.name.as_str())
-                                      {
-                                        match &prop.value.kind {
-                                          BindingPatternKind::BindingIdentifier(ident) => {
-                                            self.register_t_symbol(
-                                              ident.symbol_id(),
-                                              ident.name.as_str(),
-                                            );
-                                            self.read_t(ident.symbol_id(), namespace.clone());
-                                          }
-                                          BindingPatternKind::AssignmentPattern(assign) => {
-                                            if let BindingPatternKind::BindingIdentifier(ident) =
-                                              &assign.left.kind
-                                            {
-                                              self.register_t_symbol(
-                                                ident.symbol_id(),
-                                                ident.name.as_str(),
-                                              );
-                                              self.read_t(ident.symbol_id(), namespace.clone());
-                                            }
-                                          }
-                                          _ => {}
-                                        }
-                                      }
-                                    }
-                                  });
-                                }
-                                BindingPatternKind::BindingIdentifier(ident) => {
-                                  self.read_object_member_t(ident.symbol_id(), namespace);
-                                }
-                                _ => {}
-                              }
+                              let namespace_ref = &namespace;
+                              self.process_binding_pattern(&var.id, namespace_ref, false);
                             }
                           }
                         }
@@ -958,7 +950,6 @@ impl<'a> Walker<'a> {
     &mut self,
     symbol_id: SymbolId,
     defined_ns: Option<String>,
-    translation_names: &HashSet<String>,
     is_standard_hook: bool,
     visited_symbols: &mut HashSet<SymbolId>,
   ) {
@@ -981,7 +972,7 @@ impl<'a> Walker<'a> {
               .walk_utils
               .read_hook_namespace_argument(call)
               .or_else(|| defined_ns.clone());
-            self.handle_hook_call_context(node, namespace, translation_names, visited_symbols);
+            self.handle_hook_call_context(node, namespace, visited_symbols);
           }
         }
       });
@@ -991,24 +982,22 @@ impl<'a> Walker<'a> {
     &mut self,
     call_node: &AstNode,
     namespace: Option<String>,
-    translation_names: &HashSet<String>,
     visited_symbols: &mut HashSet<SymbolId>,
   ) {
     if let Some(parent_node) = self.semantic.nodes().parent_node(call_node.id()) {
       if let AstKind::VariableDeclarator(var) = parent_node.kind() {
-        self.handle_hook_variable_binding(var, namespace, translation_names);
+        self.handle_hook_variable_binding(var, namespace);
         return;
       }
     }
 
-    self.handle_hook_wrapper_chain(call_node, namespace, translation_names, visited_symbols);
+    self.handle_hook_wrapper_chain(call_node, namespace, visited_symbols);
   }
 
   fn handle_hook_wrapper_chain(
     &mut self,
     call_node: &AstNode,
     namespace: Option<String>,
-    translation_names: &HashSet<String>,
     visited_symbols: &mut HashSet<SymbolId>,
   ) {
     let mut current = self.semantic.nodes().parent_node(call_node.id());
@@ -1042,7 +1031,7 @@ impl<'a> Walker<'a> {
               wrapper_symbols.push(ident.symbol_id());
             }
           } else {
-            self.handle_hook_variable_binding(var, namespace.clone(), translation_names);
+            self.handle_hook_variable_binding(var, namespace.clone());
           }
           current = self.semantic.nodes().parent_node(node.id());
         }
@@ -1053,53 +1042,141 @@ impl<'a> Walker<'a> {
     }
 
     for symbol_id in wrapper_symbols {
-      self.process_hook_symbol_references(
-        symbol_id,
-        namespace.clone(),
-        translation_names,
-        true,
-        visited_symbols,
-      );
+      self.process_hook_symbol_references(symbol_id, namespace.clone(), true, visited_symbols);
     }
   }
 
-  fn handle_hook_variable_binding(
+  fn handle_hook_variable_binding(&mut self, var: &VariableDeclarator, namespace: Option<String>) {
+    let namespace_ref = &namespace;
+    self.process_binding_pattern(&var.id, namespace_ref, false);
+  }
+
+  fn process_binding_pattern(
     &mut self,
-    var: &VariableDeclarator,
-    namespace: Option<String>,
-    translation_names: &HashSet<String>,
+    pattern: &BindingPattern,
+    namespace: &Option<String>,
+    force_translation: bool,
   ) {
-    match &var.id.kind {
-      BindingPatternKind::ObjectPattern(obj) => {
-        for prop in &obj.properties {
-          if let PropertyKey::StaticIdentifier(key) = &prop.key {
-            if translation_names.contains(key.name.as_str())
-              || self.is_known_t_name(key.name.as_str())
-            {
-              match &prop.value.kind {
-                BindingPatternKind::BindingIdentifier(ident) => {
-                  // Register the destructured t reference and read its calls immediately.
-                  self.register_t_symbol(ident.symbol_id(), ident.name.as_str());
-                  self.read_t(ident.symbol_id(), namespace.clone());
-                }
-                BindingPatternKind::AssignmentPattern(assign) => {
-                  if let BindingPatternKind::BindingIdentifier(ident) = &assign.left.kind {
-                    // Register the destructured t reference assigned with a default value.
-                    self.register_t_symbol(ident.symbol_id(), ident.name.as_str());
-                    self.read_t(ident.symbol_id(), namespace.clone());
-                  }
-                }
-                _ => {}
-              }
-            }
-          }
+    match &pattern.kind {
+      BindingPatternKind::BindingIdentifier(ident) => {
+        let is_translation = force_translation || self.is_known_t_name(ident.name.as_str());
+
+        if is_translation {
+          // Ensure destructured translation helpers are tracked immediately.
+          self.register_t_symbol(ident.symbol_id(), ident.name.as_str());
+          self.read_t(ident.symbol_id(), namespace.clone());
+        } else {
+          // Track plain identifiers for later destructuring or member usage.
+          self.read_object_member_t(ident.symbol_id(), namespace.clone());
         }
       }
-      BindingPatternKind::BindingIdentifier(ident) => {
-        // Track the namespace on plain assignments like `const trans = useTranslation()`.
-        self.read_object_member_t(ident.symbol_id(), namespace);
+      BindingPatternKind::AssignmentPattern(assign) => {
+        // Only the left side defines the actual binding entry point.
+        self.process_binding_pattern(&assign.left, namespace, force_translation);
       }
-      _ => {}
+      BindingPatternKind::ObjectPattern(obj) => {
+        for prop in &obj.properties {
+          let mut should_force = force_translation;
+
+          if let PropertyKey::StaticIdentifier(key) = &prop.key {
+            if self.is_known_t_name(key.name.as_str()) {
+              should_force = true;
+            }
+          }
+
+          self.process_binding_pattern(&prop.value, namespace, should_force);
+        }
+
+        if let Some(rest) = &obj.rest {
+          self.process_binding_pattern(&rest.argument, namespace, force_translation);
+        }
+      }
+      BindingPatternKind::ArrayPattern(array) => {
+        self.process_array_pattern(array, namespace, force_translation);
+      }
+    }
+  }
+
+  fn process_array_pattern(
+    &mut self,
+    array: &ArrayPattern,
+    namespace: &Option<String>,
+    force_translation: bool,
+  ) {
+    // Walk through array destructuring so hooks like `const [t] = useTranslation()`
+    // register the translation helpers at the first touchpoint.
+    for element in &array.elements {
+      let Some(pattern) = element else {
+        continue;
+      };
+
+      self.process_binding_pattern(pattern, namespace, force_translation);
+    }
+
+    if let Some(rest) = &array.rest {
+      self.process_binding_pattern(&rest.argument, namespace, force_translation);
+    }
+  }
+
+  fn find_enclosing_variable_declarator(&self, start_node: &AstNode) -> Option<NodeId> {
+    let mut current = Some(start_node);
+
+    while let Some(node) = current {
+      if matches!(node.kind(), AstKind::VariableDeclarator(_)) {
+        return Some(node.id());
+      }
+
+      current = self.semantic.nodes().parent_node(node.id());
+    }
+
+    None
+  }
+
+  fn collect_translation_bindings(
+    &self,
+    pattern: &BindingPattern,
+    force_translation: bool,
+    out: &mut Vec<(SymbolId, String)>,
+  ) {
+    match &pattern.kind {
+      BindingPatternKind::BindingIdentifier(ident) => {
+        let is_translation = force_translation || self.is_known_t_name(ident.name.as_str());
+
+        if is_translation {
+          out.push((ident.symbol_id(), ident.name.to_string()));
+        }
+      }
+      BindingPatternKind::AssignmentPattern(assign) => {
+        self.collect_translation_bindings(&assign.left, force_translation, out);
+      }
+      BindingPatternKind::ObjectPattern(obj) => {
+        for prop in &obj.properties {
+          let mut should_force = force_translation;
+
+          if let PropertyKey::StaticIdentifier(key) = &prop.key {
+            if self.is_known_t_name(key.name.as_str()) {
+              should_force = true;
+            }
+          }
+
+          self.collect_translation_bindings(&prop.value, should_force, out);
+        }
+
+        if let Some(rest) = &obj.rest {
+          self.collect_translation_bindings(&rest.argument, force_translation, out);
+        }
+      }
+      BindingPatternKind::ArrayPattern(array) => {
+        for element in &array.elements {
+          if let Some(element_pattern) = element {
+            self.collect_translation_bindings(element_pattern, force_translation, out);
+          }
+        }
+
+        if let Some(rest) = &array.rest {
+          self.collect_translation_bindings(&rest.argument, force_translation, out);
+        }
+      }
     }
   }
 
