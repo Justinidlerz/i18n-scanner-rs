@@ -1,4 +1,5 @@
 use super::walker::Walker;
+use crate::analyzer::i18n_packages::preset_member_type;
 use crate::node::i18n_types::I18nMember;
 use oxc_ast::ast::{
   ArrayPattern, BindingPatternKind, Declaration, ExportAllDeclaration, ExportDefaultDeclaration,
@@ -73,7 +74,8 @@ impl<'a> Visit<'a> for Walker<'a> {
             match &specifier.local {
               ModuleExportName::IdentifierReference(ident) => {
                 let resolved_member = ident.reference_id.get().and_then(|reference_id| {
-                  self.walk_utils
+                  self
+                    .walk_utils
                     .get_var_defined_node(reference_id)
                     .and_then(|node| match node.kind() {
                       AstKind::VariableDeclarator(decl) => self.resolve_i18n_export(&decl),
@@ -104,10 +106,19 @@ impl<'a> Visit<'a> for Walker<'a> {
     if let Some(declaration) = &it.declaration {
       let specs = match &declaration {
         // export function a() {}
-        Declaration::FunctionDeclaration(_decl) => {
-          // vec![(decl.id.name.to_string(), self.resolve_i18n_export(decl))]
-          // TODO: handle function declaration
-          vec![]
+        Declaration::FunctionDeclaration(decl) => {
+          if let Some(ident) = &decl.id {
+            let name = ident.name.to_string();
+            // Recognize well-known i18n exports even when they are implemented directly.
+            let member = preset_member_type(name.as_str()).map(|member_type| I18nMember {
+              r#type: member_type,
+              ns: None,
+            });
+
+            vec![(name, member)]
+          } else {
+            vec![]
+          }
         }
         Declaration::VariableDeclaration(decl) => decl
           .declarations
