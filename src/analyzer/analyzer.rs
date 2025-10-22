@@ -109,14 +109,14 @@ mod tests {
   fn make_seed() {
     let (_, node_store) = analyze("index.tsx".into(), None);
 
-    assert_eq!(node_store.get_i18n_exported_nodes().len(), 4);
+    assert_eq!(node_store.get_i18n_exported_nodes().len(), 5);
   }
 
   #[test]
   fn node_include_i18n_import() {
     let (_, node_store) = analyze("index.tsx".into(), None);
 
-    assert_eq!(node_store.get_all_i18n_nodes().len(), 22);
+    assert_eq!(node_store.get_all_i18n_nodes().len(), 23);
   }
 
   #[test]
@@ -125,7 +125,7 @@ mod tests {
 
     let (_, node_store) = analyze("index.tsx".into(), Some(pkgs));
 
-    assert_eq!(node_store.get_i18n_exported_nodes().len(), 4);
+    assert_eq!(node_store.get_i18n_exported_nodes().len(), 5);
   }
 
   #[test]

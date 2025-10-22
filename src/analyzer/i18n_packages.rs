@@ -174,3 +174,9 @@ pub fn preset_member_names(member_type: &I18nType) -> Vec<&'static str> {
     })
     .collect()
 }
+
+pub fn preset_member_type(name: &str) -> Option<I18nType> {
+  PRESET_I18N_MEMBERS
+    .iter()
+    .find_map(|(preset_name, preset_type)| (*preset_name == name).then(|| preset_type.clone()))
+}

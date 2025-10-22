@@ -1,4 +1,4 @@
-use crate::analyzer::i18n_packages::is_preset_member_name;
+use crate::analyzer::i18n_packages::{is_preset_member_name, preset_member_type};
 use crate::node::i18n_types::{I18nMember, I18nType};
 use crate::node::node::Node;
 use crate::node::node_store::NodeStore;
@@ -183,12 +183,25 @@ impl<'a> Walker<'a> {
   }
 
   pub fn resolve_i18n_export(&self, de: &VariableDeclarator) -> Option<I18nMember> {
+    let export_name = de
+      .id
+      .get_binding_identifier()
+      .map(|ident| ident.name.to_string());
+
+    // Fallback to preset member types when the export name matches known i18n members.
+    let fallback_member = export_name.as_ref().and_then(|name| {
+      preset_member_type(name).map(|member_type| I18nMember {
+        r#type: member_type,
+        ns: None,
+      })
+    });
+
     // import should before export, and it should import i18n source
     if !self.node.has_i18n_source_imported() {
-      return None;
+      return fallback_member.clone();
     }
     let Some(init) = &de.init else {
-      return None;
+      return fallback_member;
     };
 
     let resolve_expression_fn = |state: &Statement| -> Option<I18nMember> {
@@ -215,7 +228,7 @@ impl<'a> Walker<'a> {
       self.resolve_call_i18n_method(call)
     };
 
-    match &init {
+    let member = match &init {
       Expression::ArrowFunctionExpression(func) => {
         // Handle arrow functions that might be custom i18n hooks
 
@@ -257,7 +270,9 @@ impl<'a> Walker<'a> {
         resolve_return_fn(&body.statements[0])
       }
       _ => None,
-    }
+    };
+
+    member.or_else(|| fallback_member.clone())
   }
 
   pub fn resolve_expression_fn(&self, state: &Statement) -> Option<I18nMember> {
