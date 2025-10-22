@@ -7,7 +7,7 @@ export interface UseTranslationResult {
   i18n: { t: TFunction };
 }
 
-export function useTranslation(_namespace?: string | string[]): UseTranslationResult {
+export function useTranslation(_namespace?: string | string[]): any {
   const scopedT: TFunction = (key) => key;
   return {
     t: scopedT,
