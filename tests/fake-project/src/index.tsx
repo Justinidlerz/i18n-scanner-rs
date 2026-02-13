@@ -23,6 +23,9 @@ import NamespaceFromVar from './NamespaceFromVar'
 import CustomHookInline from './CustomHookInline'
 import TArray from './TArray'
 import TArrayFromCustom from './TArrayFromCustom'
+import UseTranslationNsArray from './UseTranslationNsArray'
+import TransNsComp from './TransNsComp'
+import TranslationNsComp from './TranslationNsComp'
 
 init()
 
@@ -53,6 +56,9 @@ const Entry = () => {
       <I18nCodeCrossFile />
       <TArray />
       <TArrayFromCustom />
+      <UseTranslationNsArray />
+      <TransNsComp />
+      <TranslationNsComp />
     </>
   )
 }

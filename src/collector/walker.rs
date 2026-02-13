@@ -514,6 +514,44 @@ impl<'a> Walker<'a> {
     }
   }
 
+  fn resolve_jsx_namespace(
+    &self,
+    opening_element: &JSXOpeningElement,
+    defined_ns: Option<String>,
+  ) -> String {
+    for attribute in &opening_element.attributes {
+      let JSXAttributeItem::Attribute(attr) = attribute else {
+        continue;
+      };
+
+      let JSXAttributeName::Identifier(ident) = &attr.name else {
+        continue;
+      };
+
+      if ident.name != "ns" {
+        continue;
+      }
+
+      if let Some(value) = &attr.value {
+        match value {
+          JSXAttributeValue::StringLiteral(s) => {
+            return s.value.to_string();
+          }
+          JSXAttributeValue::ExpressionContainer(container) => {
+            if let Some(expr) = container.expression.as_expression() {
+              if let Some(ns) = self.walk_utils.read_str_expression(expr) {
+                return ns;
+              }
+            }
+          }
+          _ => {}
+        }
+      }
+    }
+
+    defined_ns.unwrap_or_else(|| "default".to_string())
+  }
+
   pub fn read_trans_component(&mut self, symbol_id: SymbolId, defined_ns: Option<String>) {
     self
       .semantic
@@ -570,10 +608,7 @@ impl<'a> Walker<'a> {
           if ident.name == "i18nKey" {
             if let Some(attr_value) = &attr.value {
               if let JSXAttributeValue::StringLiteral(s) = attr_value {
-                let namespace = defined_ns
-                  .as_ref()
-                  .map(|s| s.clone())
-                  .unwrap_or_else(|| "default".to_string());
+                let namespace = self.resolve_jsx_namespace(opening_element, defined_ns.clone());
                 self.add_key(&namespace, s.value.to_string());
               }
             }
@@ -633,9 +668,11 @@ impl<'a> Walker<'a> {
   ) {
     // Translation component has children that are functions
     // We need to find t() calls within the children
+    let resolved_ns = Some(self.resolve_jsx_namespace(&jsx_element.opening_element, defined_ns));
+
     for child in &jsx_element.children {
       if let JSXChild::Element(child_element) = child {
-        self.read_translation_jsx_element(child_element, defined_ns.clone());
+        self.read_translation_jsx_element(child_element, resolved_ns.clone());
       } else if let JSXChild::ExpressionContainer(expr_container) = child {
         // Handle expressions like {(t) => <p>{t('key')}</p>} or {t('key')}
         // JSXExpression inherits from Expression, so we can match on it
@@ -644,7 +681,7 @@ impl<'a> Walker<'a> {
           _ => {
             // Convert JSXExpression to Expression for processing
             if let Some(expr) = expr_container.expression.as_expression() {
-              self.read_translation_expression(expr, defined_ns.clone());
+              self.read_translation_expression(expr, resolved_ns.clone());
             }
           }
         }
