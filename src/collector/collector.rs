@@ -94,7 +94,7 @@ mod tests {
   fn full_collect() {
     let (_, collector) = collect("index.tsx".into(), None);
 
-    assert_eq!(collector.i18n_namespaces.len(), 5);
+    assert_eq!(collector.i18n_namespaces.len(), 8);
 
     println!("default {:?}", collector.get_keys("default"));
 
@@ -103,6 +103,9 @@ mod tests {
     assert_eq!(collector.get_keys("namespace_2").len(), 1);
     assert_eq!(collector.get_keys("namespace_3").len(), 2);
     assert_eq!(collector.get_keys("namespace_4").len(), 1);
+    assert_eq!(collector.get_keys("namespace_array").len(), 1);
+    assert_eq!(collector.get_keys("namespace_trans").len(), 1);
+    assert_eq!(collector.get_keys("namespace_translation").len(), 1);
   }
 
   key_match!(

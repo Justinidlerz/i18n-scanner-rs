@@ -1,8 +1,8 @@
 use crate::node::node::Node;
 use log::debug;
 use oxc_ast::ast::{
-  BinaryOperator, BindingPatternKind, CallExpression, Declaration, Expression, SourceType,
-  Statement,
+  BinaryOperator, BindingPatternKind, CallExpression, Declaration, Expression, ObjectPropertyKind,
+  PropertyKey, SourceType, Statement,
 };
 use oxc_ast::AstKind;
 use oxc_semantic::{AstNode, Semantic};
@@ -130,9 +130,43 @@ impl<'a> WalkerUtils<'a> {
       return None;
     };
 
-    arg
-      .as_expression()
-      .and_then(|expr| self.read_str_expression(expr))
+    arg.as_expression().and_then(|expr| match expr {
+      // useTranslation('namespace')
+      Expression::StringLiteral(_) | Expression::TemplateLiteral(_) | Expression::Identifier(_) => {
+        self.read_str_expression(expr)
+      }
+      // useTranslation(['namespaceA', 'namespaceB'])
+      Expression::ArrayExpression(array_expr) => self.read_first_namespace_from_array(array_expr),
+      // useTranslation({ ns: 'namespace' })
+      Expression::ObjectExpression(obj_expr) => obj_expr.properties.iter().find_map(|prop| {
+        let ObjectPropertyKind::ObjectProperty(object_prop) = prop else {
+          return None;
+        };
+
+        let PropertyKey::StaticIdentifier(key) = &object_prop.key else {
+          return None;
+        };
+
+        if key.name != "ns" {
+          return None;
+        }
+
+        // Prefer centralized string resolution to keep namespace parsing consistent.
+        self.read_str_expression(&object_prop.value)
+      }),
+      _ => None,
+    })
+  }
+
+  fn read_first_namespace_from_array(
+    &self,
+    array_expr: &oxc_ast::ast::ArrayExpression,
+  ) -> Option<String> {
+    let first = array_expr.elements.first()?;
+    let expr = first.as_expression()?;
+
+    // react-i18next uses the first namespace as default for t().
+    self.read_str_expression(expr)
   }
 
   pub fn get_var_defined_node(&self, ref_id: ReferenceId) -> Option<&AstNode> {
