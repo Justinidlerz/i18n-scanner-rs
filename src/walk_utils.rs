@@ -77,8 +77,9 @@ impl<'a> WalkerUtils<'a> {
                 }
               }
 
-              // Fallback to the imported name
-              return Some(imported_name.to_string());
+              // Keep unresolved imports as None so post-collection can resolve
+              // cross-file alias chains instead of collecting identifier names.
+              return None;
             }
             _ => {}
           }

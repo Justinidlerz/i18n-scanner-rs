@@ -66,7 +66,16 @@ impl Collector {
           .entry(namespace.to_string())
           .or_default()
           .extend(keys.iter().cloned());
-      })
+      });
+
+      let post_keys = walker.post_collects.resolve_pending_keys(&self.node_store);
+      post_keys.iter().for_each(|(namespace, keys)| {
+        self
+          .i18n_namespaces
+          .entry(namespace.to_string())
+          .or_default()
+          .extend(keys.iter().cloned());
+      });
     }
     self
   }
@@ -98,7 +107,7 @@ mod tests {
 
     println!("default {:?}", collector.get_keys("default"));
 
-    assert_eq!(collector.get_keys("default").len(), 18);
+    assert_eq!(collector.get_keys("default").len(), 19);
     assert_eq!(collector.get_keys("namespace_1").len(), 2);
     assert_eq!(collector.get_keys("namespace_2").len(), 1);
     assert_eq!(collector.get_keys("namespace_3").len(), 2);
@@ -198,6 +207,12 @@ mod tests {
   );
 
   key_match!(hoc_component, "HocComp.tsx".into(), vec!["HOC_COMPONENT"]);
+
+  key_match!(
+    post_collector_cross_file,
+    "PostCollectorCrossFile/Component.tsx".into(),
+    vec!["POST_COLLECTOR_CROSS_FILE"]
+  );
 
   key_match!(
     trans_component,

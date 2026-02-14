@@ -228,6 +228,16 @@ impl<'a> Walker<'a> {
       return;
     }
 
+    if let Expression::Identifier(ident) = expr {
+      // Defer unresolved identifier keys to post-collection so we can resolve
+      // cross-file alias/import-export chains after the main AST traversal.
+      self.post_collects.add_pending_identifier_key(
+        self.node.file_path.to_string(),
+        ns.clone(),
+        ident.name.to_string(),
+      );
+    }
+
     // If we can't resolve the key, check if this is a dynamic key pattern
     if let Some(dynamic_keys) = self.try_resolve_dynamic_keys(expr) {
       for dynamic_key in dynamic_keys {
