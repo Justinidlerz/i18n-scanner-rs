@@ -26,6 +26,7 @@ import TArrayFromCustom from './TArrayFromCustom'
 import UseTranslationNsArray from './UseTranslationNsArray'
 import TransNsComp from './TransNsComp'
 import TranslationNsComp from './TranslationNsComp'
+import PostCollectorCrossFile from './PostCollectorCrossFile/Component'
 
 init()
 
@@ -59,6 +60,7 @@ const Entry = () => {
       <UseTranslationNsArray />
       <TransNsComp />
       <TranslationNsComp />
+      <PostCollectorCrossFile />
     </>
   )
 }

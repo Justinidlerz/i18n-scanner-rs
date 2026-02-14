@@ -26,6 +26,7 @@ describe('I18n-scanner-rs', () => {
           "MEMBER_CALL_T",
           "MEMBER_T",
           "NAMESPACE_IMPORT",
+          "POST_COLLECTOR_CROSS_FILE",
           "RENAME_BOTH",
           "RENAME_T",
           "RENAME_USE_TRANSLATION",
