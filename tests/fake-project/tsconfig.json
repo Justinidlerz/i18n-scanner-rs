@@ -3,6 +3,7 @@
     "jsx": "preserve",
     "baseUrl": ".",
     "paths": {
+      "@/*": ["src/*"],
       "@custom/i18n": ["../custom-i18n/index.ts"]
     }
   },
