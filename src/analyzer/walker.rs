@@ -290,11 +290,25 @@ impl<'a> Walker<'a> {
       return None;
     };
 
-    let r#ref = self
-      .semantic
-      .scoping()
-      .get_reference(id.reference_id.get().unwrap());
-    let node = self.semantic.symbol_declaration(r#ref.symbol_id().unwrap());
+    let Some(reference_id) = id.reference_id.get() else {
+      // Some invalid/unsupported syntax paths may not bind a reference id.
+      log::debug!(
+        "[i18n-scanner-rs] Missing reference id while resolving call expression in {}",
+        self.node.file_path
+      );
+      return None;
+    };
+    let r#ref = self.semantic.scoping().get_reference(reference_id);
+
+    let Some(symbol_id) = r#ref.symbol_id() else {
+      // Keep scanning instead of panicking so we can report the problematic file path.
+      log::debug!(
+        "[i18n-scanner-rs] Missing symbol id while resolving call expression in {}",
+        self.node.file_path
+      );
+      return None;
+    };
+    let node = self.semantic.symbol_declaration(symbol_id);
 
     let spec = match node.kind() {
       AstKind::ImportSpecifier(spec) => self
