@@ -4,7 +4,7 @@ use crate::node::node::Node;
 use crate::node::node_store::NodeStore;
 use oxc_allocator::Allocator;
 use oxc_ast_visit::walk;
-use oxc_parser::Parser;
+use oxc_parser::{ParseOptions, Parser};
 use oxc_resolver::Resolver;
 use oxc_semantic::SemanticBuilder;
 use regex::Regex;
@@ -71,8 +71,31 @@ impl Analyzer {
 
     self.node_store.insert_node(file_path_ref, node.clone());
 
-    let parser = Parser::new(&self.allocator, &source_text, node.source_type);
-    let program = parser.parse().program;
+    let parser =
+      Parser::new(&self.allocator, &source_text, node.source_type).with_options(ParseOptions {
+        // Keep scanning on files that have top-level returns in generated outputs.
+        allow_return_outside_function: true,
+        ..ParseOptions::default()
+      });
+    let parser_return = parser.parse();
+    if parser_return.panicked {
+      log::warn!(
+        "[i18n-scanner-rs] Parse panicked for file: {}",
+        node.file_path
+      );
+    }
+    if !parser_return.errors.is_empty() {
+      // Surface parse diagnostics together with file path so syntax compatibility issues are easier to locate.
+      log::debug!(
+        "[i18n-scanner-rs] Parse diagnostics for {}: {} error(s)",
+        node.file_path,
+        parser_return.errors.len()
+      );
+      for error in &parser_return.errors {
+        log::debug!("[i18n-scanner-rs] {error}");
+      }
+    }
+    let program = parser_return.program;
     let semantic = SemanticBuilder::new().build(&program);
 
     let mut walker = Walker::new(
