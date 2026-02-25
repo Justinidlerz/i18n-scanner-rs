@@ -110,4 +110,22 @@ describe('I18n-scanner-rs', () => {
           }
         `)
   })
+
+  it('Should resolve tsconfig alias imports', () => {
+    const result = scan({
+      entryPaths: [path.join(root, './src/AliasPath/entry.tsx')],
+      tsconfigPath,
+      externals: ['@custom/i18n'],
+      extendI18NPackages: [
+        {
+          packagePath: '@custom/i18n',
+          members: [],
+        },
+      ],
+    })
+    const sortedResult = Object.fromEntries(Object.entries(result).map(([k, v]) => [k, v.sort()]))
+    expect(sortedResult).toEqual({
+      default: ['ALIAS_PATH_KEY'],
+    })
+  })
 })
