@@ -12,7 +12,7 @@ use oxc_resolver::Resolver;
 use oxc_semantic::Semantic;
 use regex::Regex;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub struct Walker<'a> {
@@ -49,6 +49,77 @@ impl<'a> Walker<'a> {
     }
   }
 
+  fn apply_resolved_import(
+    &mut self,
+    source: &StringLiteral,
+    specifiers: &[String],
+    path_str: String,
+    is_external: bool,
+  ) {
+    if is_external && self.i18n_methods.get_node(&path_str).is_none() {
+      return;
+    }
+
+    if let Some(node) = self.i18n_methods.get_node(&path_str) {
+      let importing_node_members = node.get_exporting_i18n_members();
+
+      if specifiers.iter().any(|specifier| {
+        // is matched i18n methods or
+        // namespace import, no matter is reexport all or not
+        importing_node_members.contains_key(specifier) || specifier == "*"
+      }) {
+        self.node.mark_has_i18n_source_imported();
+      }
+    }
+
+    self
+      .node
+      .try_insert_importing(source.value.to_string(), path_str.clone())
+      .unwrap_or_else(|_| {
+        self
+          .importing_collection
+          .entry(source.value.to_string())
+          .or_insert(path_str);
+      });
+  }
+
+  fn resolve_at_alias_fallback(&self, specifier: &str) -> Option<String> {
+    let rel = specifier.strip_prefix("@/")?;
+
+    let src_root = Path::new(self.node.file_path.as_str())
+      .ancestors()
+      .find(|path| path.file_name().is_some_and(|name| name == "src"))?;
+
+    let base_candidate = src_root.join(rel);
+    let has_script_extension = base_candidate
+      .extension()
+      .and_then(|ext| ext.to_str())
+      .map(|ext| matches!(ext, "ts" | "tsx" | "js" | "jsx"))
+      .unwrap_or(false);
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if has_script_extension {
+      candidates.push(base_candidate.clone());
+    } else {
+      candidates.extend(
+        ["ts", "tsx", "js", "jsx"]
+          .iter()
+          .map(|ext| base_candidate.with_extension(ext)),
+      );
+      candidates.extend(
+        ["ts", "tsx", "js", "jsx"]
+          .iter()
+          .map(|ext| base_candidate.join(format!("index.{ext}"))),
+      );
+    }
+
+    candidates
+      .into_iter()
+      .find(|candidate| candidate.is_file())
+      .and_then(|candidate| candidate.to_str().map(|path| path.to_string()))
+  }
+
   pub fn append_reexport(&mut self, source: &StringLiteral) {
     self.reexport_all_importing.push(source.value.to_string());
   }
@@ -74,34 +145,12 @@ impl<'a> Walker<'a> {
       .resolve(basename.to_str().unwrap(), source.value.as_str())
     {
       if let Some(path_str) = res.path().to_str() {
-        if is_external && self.i18n_methods.get_node(path_str).is_none() {
-          return;
-        }
-
-        if let Some(node) = self.i18n_methods.get_node(path_str) {
-          let importing_node_members = node.get_exporting_i18n_members();
-
-          if specifiers.iter().any(|specifier| {
-            // is matched i18n methods or
-            // namespace import, no matter is reexport all or not
-            importing_node_members.contains_key(specifier) || specifier == "*"
-          }) {
-            self.node.mark_has_i18n_source_imported();
-          }
-        }
-
-        self
-          .node
-          .try_insert_importing(source.value.to_string(), path_str.to_string())
-          .unwrap_or_else(|_| {
-            self
-              .importing_collection
-              .entry(source.value.to_string())
-              .or_insert_with(|| path_str.to_string());
-          })
+        self.apply_resolved_import(source, &specifiers, path_str.to_string(), is_external);
       } else {
         debug!("[i18n-scanner-rs] failed to format path: {}", source.value)
       }
+    } else if let Some(path_str) = self.resolve_at_alias_fallback(source.value.as_str()) {
+      self.apply_resolved_import(source, &specifiers, path_str, is_external);
     } else {
       debug!(
         "[i18n-scanner-rs] failed to resolve: {} in {}",
