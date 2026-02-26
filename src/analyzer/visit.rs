@@ -2,7 +2,7 @@ use super::walker::Walker;
 use crate::analyzer::i18n_packages::preset_member_type;
 use crate::node::i18n_types::I18nMember;
 use oxc_ast::ast::{
-  ArrayPattern, BindingPatternKind, Declaration, ExportAllDeclaration, ExportDefaultDeclaration,
+  ArrayPattern, BindingPattern, Declaration, ExportAllDeclaration, ExportDefaultDeclaration,
   ExportNamedDeclaration, Expression, ImportDeclaration, ImportDeclarationSpecifier,
   ImportExpression, ModuleExportName, ObjectPattern,
 };
@@ -124,15 +124,15 @@ impl<'a> Visit<'a> for Walker<'a> {
           .declarations
           .iter()
           .flat_map(|de| {
-            match &de.id.kind {
+            match &de.id {
               // export const a = "xyz";
-              BindingPatternKind::BindingIdentifier(ident) => {
+              BindingPattern::BindingIdentifier(ident) => {
                 vec![(ident.name.to_string(), self.resolve_i18n_export(de))]
               }
               // export const { a, b } = xyz;
-              BindingPatternKind::ObjectPattern(obj) => collect_deconstructed_object_export(&obj),
+              BindingPattern::ObjectPattern(obj) => collect_deconstructed_object_export(&obj),
               // export const [a, b] = xyz;
-              BindingPatternKind::ArrayPattern(arr) => collect_deconstructed_array_export(&arr),
+              BindingPattern::ArrayPattern(arr) => collect_deconstructed_array_export(&arr),
               _ => vec![],
             }
           })
@@ -166,8 +166,8 @@ fn collect_deconstructed_array_export(arr: &ArrayPattern) -> Vec<(String, Option
         return None;
       };
 
-      match &pattern.kind {
-        BindingPatternKind::BindingIdentifier(ident) => Some((ident.name.to_string(), None)),
+      match pattern {
+        BindingPattern::BindingIdentifier(ident) => Some((ident.name.to_string(), None)),
         _ => None,
       }
     })
@@ -182,11 +182,11 @@ fn collect_deconstructed_object_export(obj: &ObjectPattern) -> Vec<(String, Opti
   obj
     .properties
     .iter()
-    .fold(vec![], |acc, prop| match &prop.value.kind {
-      BindingPatternKind::ObjectPattern(obj) => {
+    .fold(vec![], |acc, prop| match &prop.value {
+      BindingPattern::ObjectPattern(obj) => {
         [collect_deconstructed_object_export(&obj), acc].concat()
       }
-      BindingPatternKind::BindingIdentifier(ident) => {
+      BindingPattern::BindingIdentifier(ident) => {
         [vec![(ident.name.to_string(), None)], acc].concat()
       }
       _ => acc,

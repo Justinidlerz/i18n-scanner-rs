@@ -53,7 +53,7 @@ impl Collector {
         mangle: Some(MangleOptions::default()),
         compress: Some(CompressOptions::safest()),
       })
-      .build(&self.allocator, &mut program);
+      .minify(&self.allocator, &mut program);
 
       let semantic = SemanticBuilder::new().build(&program);
       let mut walker = Walker::new(node.clone(), &semantic.semantic);

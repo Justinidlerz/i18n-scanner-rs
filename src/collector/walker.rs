@@ -6,10 +6,10 @@ use crate::walk_utils::WalkerUtils;
 use log::debug;
 use oxc_allocator::Box as OxcBox;
 use oxc_ast::ast::{
-  ArrayPattern, BinaryExpression, BinaryOperator, BindingPattern, BindingPatternKind,
-  CallExpression, Expression, IdentifierReference, ImportSpecifier, JSXAttributeItem,
-  JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXExpression, JSXFragment,
-  JSXOpeningElement, ObjectPropertyKind, PropertyKey, SourceType, Statement, VariableDeclarator,
+  ArrayPattern, BinaryExpression, BinaryOperator, BindingPattern, CallExpression, Expression,
+  IdentifierReference, ImportSpecifier, JSXAttributeItem, JSXAttributeName, JSXAttributeValue,
+  JSXChild, JSXElement, JSXExpression, JSXFragment, JSXOpeningElement, ObjectPropertyKind,
+  PropertyKey, SourceType, Statement, VariableDeclarator,
 };
 use oxc_ast::AstKind;
 use oxc_semantic::{AstNode, Semantic};
@@ -119,15 +119,14 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
-          match node.kind() {
-            AstKind::CallExpression(call) => {
-              debug!("Found t call expression");
-              self.read_t_arguments(call, namespace.clone());
-            }
-            // TODO: handle bypass?
-            _ => {}
+        let node = self.semantic.nodes().parent_node(ref_item.node_id());
+        match node.kind() {
+          AstKind::CallExpression(call) => {
+            debug!("Found t call expression");
+            self.read_t_arguments(call, namespace.clone());
           }
+          // TODO: handle bypass?
+          _ => {}
         }
       })
   }
@@ -139,53 +138,42 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
-          match node.kind() {
-            // member call case
-            // abc.t("abc")
-            AstKind::MemberExpression(member) => {
-              member.static_property_name().map(|prop| {
-                if self.is_known_t_name(prop) {
-                  if let Some(call_node) = self.semantic.nodes().parent_node(node.id()) {
-                    if let AstKind::CallExpression(call) = call_node.kind() {
-                      self.read_t_arguments(call, namespace.clone());
-                    }
-                  }
-                }
-              });
+        let node = self.semantic.nodes().parent_node(ref_item.node_id());
+        if let Some(member) = node.kind().as_member_expression_kind() {
+          member.static_property_name().map(|prop| {
+            if self.is_known_t_name(prop.as_str()) {
+              let call_node = self.semantic.nodes().parent_node(node.id());
+              if let AstKind::CallExpression(call) = call_node.kind() {
+                self.read_t_arguments(call, namespace.clone());
+              }
             }
-            _ => {
-              let mut bindings_to_register: Vec<(SymbolId, String)> = Vec::new();
+          });
+        } else {
+          let mut bindings_to_register: Vec<(SymbolId, String)> = Vec::new();
 
-              if let Some(var_node_id) = self.find_enclosing_variable_declarator(node) {
-                let var_node = self.semantic.nodes().get_node(var_node_id);
-                if let AstKind::VariableDeclarator(var) = var_node.kind() {
-                  if let Some(init) = &var.init {
-                    if let Expression::Identifier(init_ident) = init {
-                      let init_symbol = self
-                        .semantic
-                        .scoping()
-                        .get_reference(init_ident.reference_id())
-                        .symbol_id();
+          if let Some(var_node_id) = self.find_enclosing_variable_declarator(node) {
+            let var_node = self.semantic.nodes().get_node(var_node_id);
+            if let AstKind::VariableDeclarator(var) = var_node.kind() {
+              if let Some(init) = &var.init {
+                if let Expression::Identifier(init_ident) = init {
+                  let init_symbol = self
+                    .semantic
+                    .scoping()
+                    .get_reference(init_ident.reference_id())
+                    .symbol_id();
 
-                      if init_symbol == Some(symbol_id) {
-                        self.collect_translation_bindings(
-                          &var.id,
-                          false,
-                          &mut bindings_to_register,
-                        );
-                      }
-                    }
+                  if init_symbol == Some(symbol_id) {
+                    self.collect_translation_bindings(&var.id, false, &mut bindings_to_register);
                   }
                 }
               }
-
-              for (binding_symbol, binding_name) in bindings_to_register {
-                // Register destructured translation bindings and process their usages.
-                self.register_t_symbol(binding_symbol, &binding_name);
-                self.read_t(binding_symbol, namespace.clone());
-              }
             }
+          }
+
+          for (binding_symbol, binding_name) in bindings_to_register {
+            // Register destructured translation bindings and process their usages.
+            self.register_t_symbol(binding_symbol, &binding_name);
+            self.read_t(binding_symbol, namespace.clone());
           }
         }
       })
@@ -289,65 +277,55 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
-          match node.kind() {
-            // Handle member expressions like i18n.useTranslation() or i18n.t()
-            AstKind::MemberExpression(member) => {
-              if let Some(prop_name) = member.static_property_name() {
-                debug!("Found member expression: {}", prop_name);
-                if let Some(Some(member_info)) = members.get(prop_name) {
-                  debug!(
-                    "Found member info for {}: {:?}",
-                    prop_name, member_info.r#type
-                  );
-                  match member_info.r#type {
-                    I18nType::Hook => {
-                      // Handle i18n.useTranslation()
-                      debug!("Processing hook call: {}", prop_name);
-                      if let Some(call_node) = self.semantic.nodes().parent_node(node.id()) {
-                        if let AstKind::CallExpression(call) = call_node.kind() {
-                          self.read_hook_from_namespace(call, member_info.ns.clone());
+        let node = self.semantic.nodes().parent_node(ref_item.node_id());
+        // Handle member expressions like i18n.useTranslation() or i18n.t()
+        if let Some(member) = node.kind().as_member_expression_kind() {
+          if let Some(prop_name) = member.static_property_name() {
+            debug!("Found member expression: {}", prop_name);
+            if let Some(Some(member_info)) = members.get(prop_name.as_str()) {
+              debug!(
+                "Found member info for {}: {:?}",
+                prop_name, member_info.r#type
+              );
+              match member_info.r#type {
+                I18nType::Hook => {
+                  // Handle i18n.useTranslation()
+                  debug!("Processing hook call: {}", prop_name);
+                  let call_node = self.semantic.nodes().parent_node(node.id());
+                  if let AstKind::CallExpression(call) = call_node.kind() {
+                    self.read_hook_from_namespace(call, member_info.ns.clone());
 
-                          if let Some(assign_node) =
-                            self.semantic.nodes().parent_node(call_node.id())
-                          {
-                            if let AstKind::VariableDeclarator(var) = assign_node.kind() {
-                              let namespace = self
-                                .walk_utils
-                                .read_hook_namespace_argument(call)
-                                .or_else(|| member_info.ns.clone());
-                              let translation_names = Self::collect_t_member_names(members);
-                              self.register_translation_names(translation_names.iter().cloned());
+                    let assign_node = self.semantic.nodes().parent_node(call_node.id());
+                    if let AstKind::VariableDeclarator(var) = assign_node.kind() {
+                      let namespace = self
+                        .walk_utils
+                        .read_hook_namespace_argument(call)
+                        .or_else(|| member_info.ns.clone());
+                      let translation_names = Self::collect_t_member_names(members);
+                      self.register_translation_names(translation_names.iter().cloned());
 
-                              let namespace_ref = &namespace;
-                              self.process_binding_pattern(&var.id, namespace_ref, false);
-                            }
-                          }
-                        }
-                      }
+                      let namespace_ref = &namespace;
+                      self.process_binding_pattern(&var.id, namespace_ref, false);
                     }
-                    I18nType::TMethod => {
-                      // Handle i18n.t()
-                      debug!("Processing t method call: {}", prop_name);
-                      if let Some(call_node) = self.semantic.nodes().parent_node(node.id()) {
-                        if let AstKind::CallExpression(call) = call_node.kind() {
-                          self.read_t_arguments(call, member_info.ns.clone());
-                        }
-                      }
-                    }
-                    _ => {}
                   }
-                } else {
-                  debug!("No member info found for: {}", prop_name);
                 }
+                I18nType::TMethod => {
+                  // Handle i18n.t()
+                  debug!("Processing t method call: {}", prop_name);
+                  let call_node = self.semantic.nodes().parent_node(node.id());
+                  if let AstKind::CallExpression(call) = call_node.kind() {
+                    self.read_t_arguments(call, member_info.ns.clone());
+                  }
+                }
+                _ => {}
               }
+            } else {
+              debug!("No member info found for: {}", prop_name);
             }
-            _ => {}
           }
         }
       });
   }
-
   pub fn read_hook_from_namespace(&mut self, call: &CallExpression, defined_ns: Option<String>) {
     // Similar to read_hook but for namespace calls
     let namespace = self
@@ -472,7 +450,7 @@ impl<'a> Walker<'a> {
                   if let Some(expr) = arg.as_expression() {
                     if let Expression::ArrowFunctionExpression(arrow) = expr {
                       if let Some(param) = arrow.params.items.get(0) {
-                        if let BindingPatternKind::BindingIdentifier(ident) = &param.pattern.kind {
+                        if let BindingPattern::BindingIdentifier(ident) = &param.pattern {
                           if ident.name == param_name {
                             return Some(array_values);
                           }
@@ -567,34 +545,30 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
-          // Check if this is a JSX element name
-          if let Some(_jsx_element) = node.kind().as_jsx_element() {
-            if let Some(parent_node) = self.semantic.nodes().parent_node(node.id()) {
-              if let Some(jsx_element) = parent_node.kind().as_jsx_element() {
-                self.read_trans_jsx_element(jsx_element, defined_ns.clone());
-              } else {
-                // Try to go up one more level
-                if let Some(grandparent_node) = self.semantic.nodes().parent_node(parent_node.id())
-                {
-                  if let Some(jsx_element) = grandparent_node.kind().as_jsx_element() {
-                    self.read_trans_jsx_element(jsx_element, defined_ns.clone());
-                  }
-                }
-              }
-            }
+        let node = self.semantic.nodes().parent_node(ref_item.node_id());
+        // Check if this is a JSX element name
+        if let Some(_jsx_element) = node.kind().as_jsx_element() {
+          let parent_node = self.semantic.nodes().parent_node(node.id());
+          if let Some(jsx_element) = parent_node.kind().as_jsx_element() {
+            self.read_trans_jsx_element(jsx_element, defined_ns.clone());
           } else {
-            match node.kind() {
-              // Handle JSX elements like <Trans i18nKey="key" />
-              AstKind::JSXElement(jsx_element) => {
-                self.read_trans_jsx_element(jsx_element, defined_ns.clone());
-              }
-              // Handle JSX opening elements like <Trans i18nKey="key">
-              AstKind::JSXOpeningElement(opening_element) => {
-                self.read_trans_jsx_opening_element(opening_element, defined_ns.clone());
-              }
-              _ => {}
+            // Try to go up one more level
+            let grandparent_node = self.semantic.nodes().parent_node(parent_node.id());
+            if let Some(jsx_element) = grandparent_node.kind().as_jsx_element() {
+              self.read_trans_jsx_element(jsx_element, defined_ns.clone());
             }
+          }
+        } else {
+          match node.kind() {
+            // Handle JSX elements like <Trans i18nKey="key" />
+            AstKind::JSXElement(jsx_element) => {
+              self.read_trans_jsx_element(jsx_element, defined_ns.clone());
+            }
+            // Handle JSX opening elements like <Trans i18nKey="key">
+            AstKind::JSXOpeningElement(opening_element) => {
+              self.read_trans_jsx_opening_element(opening_element, defined_ns.clone());
+            }
+            _ => {}
           }
         }
       });
@@ -633,39 +607,34 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
-          // Check if this is a JSX element name
-          if let Some(_jsx_element) = node.kind().as_jsx_element() {
-            if let Some(parent_node) = self.semantic.nodes().parent_node(node.id()) {
-              if let Some(jsx_element) = parent_node.kind().as_jsx_element() {
-                self.read_translation_jsx_element(jsx_element, defined_ns.clone());
-              } else {
-                // Try to go up one more level
-                if let Some(grandparent_node) = self.semantic.nodes().parent_node(parent_node.id())
-                {
-                  if let Some(jsx_element) = grandparent_node.kind().as_jsx_element() {
-                    self.read_translation_jsx_element(jsx_element, defined_ns.clone());
-                  }
-                }
-              }
-            }
+        let node = self.semantic.nodes().parent_node(ref_item.node_id());
+        // Check if this is a JSX element name
+        if let Some(_jsx_element) = node.kind().as_jsx_element() {
+          let parent_node = self.semantic.nodes().parent_node(node.id());
+          if let Some(jsx_element) = parent_node.kind().as_jsx_element() {
+            self.read_translation_jsx_element(jsx_element, defined_ns.clone());
           } else {
-            match node.kind() {
-              // Handle JSX elements like <Translation>{(t) => <p>{t('key')}</p>}</Translation>
-              AstKind::JSXElement(jsx_element) => {
+            // Try to go up one more level
+            let grandparent_node = self.semantic.nodes().parent_node(parent_node.id());
+            if let Some(jsx_element) = grandparent_node.kind().as_jsx_element() {
+              self.read_translation_jsx_element(jsx_element, defined_ns.clone());
+            }
+          }
+        } else {
+          match node.kind() {
+            // Handle JSX elements like <Translation>{(t) => <p>{t('key')}</p>}</Translation>
+            AstKind::JSXElement(jsx_element) => {
+              self.read_translation_jsx_element(jsx_element, defined_ns.clone());
+            }
+            // Handle JSX opening elements like <Translation>
+            AstKind::JSXOpeningElement(_opening_element) => {
+              // Need to find the parent JSX element to get the children
+              let parent_node = self.semantic.nodes().parent_node(node.id());
+              if let AstKind::JSXElement(jsx_element) = parent_node.kind() {
                 self.read_translation_jsx_element(jsx_element, defined_ns.clone());
               }
-              // Handle JSX opening elements like <Translation>
-              AstKind::JSXOpeningElement(_opening_element) => {
-                // Need to find the parent JSX element to get the children
-                if let Some(parent_node) = self.semantic.nodes().parent_node(node.id()) {
-                  if let AstKind::JSXElement(jsx_element) = parent_node.kind() {
-                    self.read_translation_jsx_element(jsx_element, defined_ns.clone());
-                  }
-                }
-              }
-              _ => {}
             }
+            _ => {}
           }
         }
       });
@@ -769,14 +738,13 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
-          match node.kind() {
-            // Handle call expressions like withTranslation()(Component)
-            AstKind::CallExpression(call) => {
-              self.read_hoc_call_expression(call, defined_ns.clone(), node.id());
-            }
-            _ => {}
+        let node = self.semantic.nodes().parent_node(ref_item.node_id());
+        match node.kind() {
+          // Handle call expressions like withTranslation()(Component)
+          AstKind::CallExpression(call) => {
+            self.read_hoc_call_expression(call, defined_ns.clone(), node.id());
           }
+          _ => {}
         }
       });
   }
@@ -802,21 +770,20 @@ impl<'a> Walker<'a> {
     } else {
       // No arguments, this might be the first call withTranslation()
       // We need to look for the parent call expression that calls the result
-      if let Some(parent_node) = self.semantic.nodes().parent_node(node_id) {
-        if let AstKind::CallExpression(parent_call) = parent_node.kind() {
-          if let Some(arg) = parent_call.arguments.get(0) {
-            if let Some(expr) = arg.as_expression() {
-              match expr {
-                Expression::Identifier(ident) => {
-                  // For HOC components, we need to find the component definition
-                  // and look for t() calls within it
-                  self.find_component_definition_and_read_t_calls(
-                    ident.name.as_str(),
-                    defined_ns.clone(),
-                  );
-                }
-                _ => {}
+      let parent_node = self.semantic.nodes().parent_node(node_id);
+      if let AstKind::CallExpression(parent_call) = parent_node.kind() {
+        if let Some(arg) = parent_call.arguments.get(0) {
+          if let Some(expr) = arg.as_expression() {
+            match expr {
+              Expression::Identifier(ident) => {
+                // For HOC components, we need to find the component definition
+                // and look for t() calls within it
+                self.find_component_definition_and_read_t_calls(
+                  ident.name.as_str(),
+                  defined_ns.clone(),
+                );
               }
+              _ => {}
             }
           }
         }
@@ -849,41 +816,36 @@ impl<'a> Walker<'a> {
         .semantic
         .symbol_references(symbol_id)
         .for_each(|ref_item| {
-          if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
-            debug!("Component reference node kind: {:?}", node.kind());
-            match node.kind() {
-              AstKind::Function(func) => {
-                debug!("Found function definition for component");
-                if let Some(body) = &func.body {
+          let node = self.semantic.nodes().parent_node(ref_item.node_id());
+          debug!("Component reference node kind: {:?}", node.kind());
+          match node.kind() {
+            AstKind::Function(func) => {
+              debug!("Found function definition for component");
+              if let Some(body) = &func.body {
+                for stmt in &body.statements {
+                  self.read_statement_for_t_calls(stmt, defined_ns.clone());
+                }
+              }
+            }
+            // Handle JSX elements in component definitions
+            AstKind::JSXElement(jsx_element) => {
+              debug!("Found JSX element in component");
+              self.read_translation_jsx_element(jsx_element, defined_ns.clone());
+            }
+            // Handle variable declarations like const HocComp = ({ t }) => { ... }
+            AstKind::VariableDeclarator(var) => {
+              debug!("Found variable declarator for component");
+              if let Some(init) = &var.init {
+                if let Expression::ArrowFunctionExpression(arrow) = init {
+                  let body = &arrow.body;
+                  // FunctionBody is a struct with statements field
                   for stmt in &body.statements {
                     self.read_statement_for_t_calls(stmt, defined_ns.clone());
                   }
                 }
               }
-              // Handle JSX elements in component definitions
-              AstKind::JSXElement(jsx_element) => {
-                debug!("Found JSX element in component");
-                self.read_translation_jsx_element(jsx_element, defined_ns.clone());
-              }
-              // Handle variable declarations like const HocComp = ({ t }) => { ... }
-              AstKind::VariableDeclarator(var) => {
-                debug!("Found variable declarator for component");
-                if let Some(init) = &var.init {
-                  if let Expression::ArrowFunctionExpression(arrow) = init {
-                    let body = &arrow.body;
-                    // FunctionBody is a struct with statements field
-                    for stmt in &body.statements {
-                      self.read_statement_for_t_calls(stmt, defined_ns.clone());
-                    }
-                  }
-                }
-              }
-              // Handle arguments - skip them as they don't contain the component definition
-              AstKind::Argument(_) => {
-                debug!("Found argument, skipping as it doesn't contain component definition");
-              }
-              _ => {}
             }
+            _ => {}
           }
         });
     }
@@ -1008,19 +970,18 @@ impl<'a> Walker<'a> {
       .semantic
       .symbol_references(symbol_id)
       .for_each(|ref_item| {
-        if let Some(node) = self.semantic.nodes().parent_node(ref_item.node_id()) {
-          if let AstKind::CallExpression(call) = node.kind() {
-            if self.is_custom_hook_call(call, is_standard_hook, defined_ns.as_deref()) {
-              self.handle_custom_hook_call(call, defined_ns.clone());
-              return;
-            }
-
-            let namespace = self
-              .walk_utils
-              .read_hook_namespace_argument(call)
-              .or_else(|| defined_ns.clone());
-            self.handle_hook_call_context(node, namespace, visited_symbols);
+        let node = self.semantic.nodes().parent_node(ref_item.node_id());
+        if let AstKind::CallExpression(call) = node.kind() {
+          if self.is_custom_hook_call(call, is_standard_hook, defined_ns.as_deref()) {
+            self.handle_custom_hook_call(call, defined_ns.clone());
+            return;
           }
+
+          let namespace = self
+            .walk_utils
+            .read_hook_namespace_argument(call)
+            .or_else(|| defined_ns.clone());
+          self.handle_hook_call_context(node, namespace, visited_symbols);
         }
       });
   }
@@ -1031,11 +992,10 @@ impl<'a> Walker<'a> {
     namespace: Option<String>,
     visited_symbols: &mut HashSet<SymbolId>,
   ) {
-    if let Some(parent_node) = self.semantic.nodes().parent_node(call_node.id()) {
-      if let AstKind::VariableDeclarator(var) = parent_node.kind() {
-        self.handle_hook_variable_binding(var, namespace);
-        return;
-      }
+    let parent_node = self.semantic.nodes().parent_node(call_node.id());
+    if let AstKind::VariableDeclarator(var) = parent_node.kind() {
+      self.handle_hook_variable_binding(var, namespace);
+      return;
     }
 
     self.handle_hook_wrapper_chain(call_node, namespace, visited_symbols);
@@ -1047,22 +1007,22 @@ impl<'a> Walker<'a> {
     namespace: Option<String>,
     visited_symbols: &mut HashSet<SymbolId>,
   ) {
-    let mut current = self.semantic.nodes().parent_node(call_node.id());
+    let mut current = Some(self.semantic.nodes().parent_node(call_node.id()));
     let mut encountered_function = false;
     let mut wrapper_symbols: Vec<SymbolId> = Vec::new();
 
     while let Some(node) = current {
       match node.kind() {
         AstKind::ReturnStatement(_) | AstKind::ExpressionStatement(_) => {
-          current = self.semantic.nodes().parent_node(node.id());
+          current = Some(self.semantic.nodes().parent_node(node.id()));
         }
         AstKind::BlockStatement(_) | AstKind::FunctionBody(_) => {
-          current = self.semantic.nodes().parent_node(node.id());
+          current = Some(self.semantic.nodes().parent_node(node.id()));
         }
         AstKind::ArrowFunctionExpression(_) => {
           // Mark that we are inside an arrow/function wrapper.
           encountered_function = true;
-          current = self.semantic.nodes().parent_node(node.id());
+          current = Some(self.semantic.nodes().parent_node(node.id()));
         }
         AstKind::Function(func) => {
           // Capture named function declarations that return the hook call.
@@ -1070,7 +1030,7 @@ impl<'a> Walker<'a> {
           if let Some(ident) = &func.id {
             wrapper_symbols.push(ident.symbol_id());
           }
-          current = self.semantic.nodes().parent_node(node.id());
+          current = Some(self.semantic.nodes().parent_node(node.id()));
         }
         AstKind::VariableDeclarator(var) => {
           if encountered_function {
@@ -1080,10 +1040,17 @@ impl<'a> Walker<'a> {
           } else {
             self.handle_hook_variable_binding(var, namespace.clone());
           }
-          current = self.semantic.nodes().parent_node(node.id());
+          current = Some(self.semantic.nodes().parent_node(node.id()));
+        }
+        AstKind::Program(_) => {
+          break;
         }
         _ => {
-          current = self.semantic.nodes().parent_node(node.id());
+          let parent = self.semantic.nodes().parent_node(node.id());
+          if parent.id() == node.id() {
+            break;
+          }
+          current = Some(parent);
         }
       }
     }
@@ -1104,8 +1071,8 @@ impl<'a> Walker<'a> {
     namespace: &Option<String>,
     force_translation: bool,
   ) {
-    match &pattern.kind {
-      BindingPatternKind::BindingIdentifier(ident) => {
+    match pattern {
+      BindingPattern::BindingIdentifier(ident) => {
         let is_translation = force_translation || self.is_known_t_name(ident.name.as_str());
 
         if is_translation {
@@ -1117,11 +1084,11 @@ impl<'a> Walker<'a> {
           self.read_object_member_t(ident.symbol_id(), namespace.clone());
         }
       }
-      BindingPatternKind::AssignmentPattern(assign) => {
+      BindingPattern::AssignmentPattern(assign) => {
         // Only the left side defines the actual binding entry point.
         self.process_binding_pattern(&assign.left, namespace, force_translation);
       }
-      BindingPatternKind::ObjectPattern(obj) => {
+      BindingPattern::ObjectPattern(obj) => {
         for prop in &obj.properties {
           let mut should_force = force_translation;
 
@@ -1138,7 +1105,7 @@ impl<'a> Walker<'a> {
           self.process_binding_pattern(&rest.argument, namespace, force_translation);
         }
       }
-      BindingPatternKind::ArrayPattern(array) => {
+      BindingPattern::ArrayPattern(array) => {
         self.process_array_pattern(array, namespace, force_translation);
       }
     }
@@ -1173,7 +1140,15 @@ impl<'a> Walker<'a> {
         return Some(node.id());
       }
 
-      current = self.semantic.nodes().parent_node(node.id());
+      if matches!(node.kind(), AstKind::Program(_)) {
+        break;
+      }
+
+      let parent = self.semantic.nodes().parent_node(node.id());
+      if parent.id() == node.id() {
+        break;
+      }
+      current = Some(parent);
     }
 
     None
@@ -1185,18 +1160,18 @@ impl<'a> Walker<'a> {
     force_translation: bool,
     out: &mut Vec<(SymbolId, String)>,
   ) {
-    match &pattern.kind {
-      BindingPatternKind::BindingIdentifier(ident) => {
+    match pattern {
+      BindingPattern::BindingIdentifier(ident) => {
         let is_translation = force_translation || self.is_known_t_name(ident.name.as_str());
 
         if is_translation {
           out.push((ident.symbol_id(), ident.name.to_string()));
         }
       }
-      BindingPatternKind::AssignmentPattern(assign) => {
+      BindingPattern::AssignmentPattern(assign) => {
         self.collect_translation_bindings(&assign.left, force_translation, out);
       }
-      BindingPatternKind::ObjectPattern(obj) => {
+      BindingPattern::ObjectPattern(obj) => {
         for prop in &obj.properties {
           let mut should_force = force_translation;
 
@@ -1213,7 +1188,7 @@ impl<'a> Walker<'a> {
           self.collect_translation_bindings(&rest.argument, force_translation, out);
         }
       }
-      BindingPatternKind::ArrayPattern(array) => {
+      BindingPattern::ArrayPattern(array) => {
         for element in &array.elements {
           if let Some(element_pattern) = element {
             self.collect_translation_bindings(element_pattern, force_translation, out);
