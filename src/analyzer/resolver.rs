@@ -28,14 +28,19 @@ pub fn create_resolver(tsconfig_path: String) -> Resolver {
     })
   });
 
-  Resolver::new(ResolveOptions {
+  debug!("cwd: {:?}", cwd);
+  debug!("tsconfig: {:?}", tsconfig);
+
+  let r = Resolver::new(ResolveOptions {
     extensions: vec![".ts".into(), ".tsx".into(), ".js".into(), ".jsx".into()],
     // ESM
     condition_names: vec!["import".into(), "default".into(), "module".into()],
     cwd,
     tsconfig,
     ..ResolveOptions::default()
-  })
+  });
+
+  r
 }
 
 #[cfg(test)]
