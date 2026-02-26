@@ -1,7 +1,7 @@
 use crate::node::node::Node;
 use log::debug;
 use oxc_ast::ast::{
-  BinaryOperator, BindingPatternKind, CallExpression, Declaration, Expression, ObjectPropertyKind,
+  BinaryOperator, BindingPattern, CallExpression, Declaration, Expression, ObjectPropertyKind,
   PropertyKey, SourceType, Statement,
 };
 use oxc_ast::AstKind;
@@ -61,25 +61,35 @@ impl<'a> WalkerUtils<'a> {
               // Handle key import cross file
               let imported_name = import_spec.imported.name();
               debug!("Found import specifier for: {}", imported_name);
+              let mut import_source: Option<&str> = None;
 
               // Find the import declaration to get the source
-              if let Some(parent_node) = self.semantic.nodes().parent_node(node.id()) {
-                if let AstKind::ImportDeclaration(import_decl) = parent_node.kind() {
-                  let source = import_decl.source.value.as_str();
-                  debug!("Import source: {}", source);
+              let parent_node = self.semantic.nodes().parent_node(node.id());
+              if let AstKind::ImportDeclaration(import_decl) = parent_node.kind() {
+                let source = import_decl.source.value.as_str();
+                import_source = Some(source);
+                debug!("Import source: {}", source);
 
-                  // Try to resolve the actual value from the imported module
-                  if let Some(imported_value) =
-                    self.resolve_imported_value_from_source(source, &imported_name)
-                  {
-                    return Some(imported_value);
-                  }
+                // Try to resolve the actual value from the imported module
+                if let Some(imported_value) =
+                  self.resolve_imported_value_from_source(source, &imported_name)
+                {
+                  return Some(imported_value);
                 }
               }
 
-              // Keep unresolved imports as None so post-collection can resolve
-              // cross-file alias chains instead of collecting identifier names.
-              return None;
+              // If the import edge is present, defer to post-collection so it can
+              // resolve cross-file alias/export chains accurately.
+              if import_source
+                .and_then(|source| self.node.get_importing_node(source))
+                .is_some()
+              {
+                return None;
+              }
+
+              // If analyzer failed to link this import source, keep the binding
+              // name as a safe fallback to avoid silently dropping the key.
+              return Some(imported_name.to_string());
             }
             _ => {}
           }
@@ -170,7 +180,7 @@ impl<'a> WalkerUtils<'a> {
     self.read_str_expression(expr)
   }
 
-  pub fn get_var_defined_node(&self, ref_id: ReferenceId) -> Option<&AstNode> {
+  pub fn get_var_defined_node(&self, ref_id: ReferenceId) -> Option<&AstNode<'a>> {
     self
       .semantic
       .scoping()
@@ -179,10 +189,10 @@ impl<'a> WalkerUtils<'a> {
       .and_then(|symbol_id| Some(self.semantic.symbol_declaration(symbol_id)))
   }
 
-  pub fn get_var_defined_parent_node(&self, ref_id: ReferenceId) -> Option<&AstNode> {
+  pub fn get_var_defined_parent_node(&self, ref_id: ReferenceId) -> Option<&AstNode<'a>> {
     self
       .get_var_defined_node(ref_id)
-      .and_then(|node| self.semantic.nodes().parent_node(node.id()))
+      .map(|node| self.semantic.nodes().parent_node(node.id()))
   }
 
   pub fn read_dynamic_keys_from_map(&self, call: &CallExpression) -> Option<String> {
@@ -301,7 +311,7 @@ impl<'a> WalkerUtils<'a> {
           if let Some(decl) = &export_decl.declaration {
             if let Declaration::VariableDeclaration(var_decl) = decl {
               for declarator in &var_decl.declarations {
-                if let BindingPatternKind::BindingIdentifier(ident) = &declarator.id.kind {
+                if let BindingPattern::BindingIdentifier(ident) = &declarator.id {
                   if ident.name == constant_name {
                     // Found the constant, try to extract its value
                     if let Some(init) = &declarator.init {
