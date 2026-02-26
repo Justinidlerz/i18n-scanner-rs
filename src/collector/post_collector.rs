@@ -1,7 +1,7 @@
 use crate::node::node_store::NodeStore;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-  BindingPatternKind, Declaration, ExportDefaultDeclarationKind, Expression,
+  BindingPattern, Declaration, ExportDefaultDeclarationKind, Expression,
   ImportDeclarationSpecifier, SourceType, Statement,
 };
 use oxc_parser::Parser;
@@ -185,7 +185,7 @@ impl PostCollector {
           }
           Statement::VariableDeclaration(var_decl) => {
             for declarator in &var_decl.declarations {
-              if let BindingPatternKind::BindingIdentifier(binding_ident) = &declarator.id.kind {
+              if let BindingPattern::BindingIdentifier(binding_ident) = &declarator.id {
                 if let Some(init) = &declarator.init {
                   if let Some(expr) = Self::extract_value_expr(init) {
                     module.locals.insert(binding_ident.name.to_string(), expr);
@@ -198,8 +198,7 @@ impl PostCollector {
             if let Some(declaration) = &export_decl.declaration {
               if let Declaration::VariableDeclaration(var_decl) = declaration {
                 for declarator in &var_decl.declarations {
-                  if let BindingPatternKind::BindingIdentifier(binding_ident) = &declarator.id.kind
-                  {
+                  if let BindingPattern::BindingIdentifier(binding_ident) = &declarator.id {
                     if let Some(init) = &declarator.init {
                       if let Some(expr) = Self::extract_value_expr(init) {
                         module

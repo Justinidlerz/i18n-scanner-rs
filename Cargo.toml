@@ -11,15 +11,15 @@ crate-type = ["cdylib"]
 # Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
 napi = { version = "3.3.0", default-features = false, features = ["napi4"] }
 napi-derive = "3.2.5"
-oxc_allocator = "0.73.0"
-oxc_ast = "0.73.0"
-oxc_ast_visit = "0.73.0"
-oxc_parser = "0.73.0"
-oxc_resolver = "11.4.0"
-oxc_semantic = "0.73.0"
-oxc_syntax = "0.73.0"
+oxc_allocator = "0.115.0"
+oxc_ast = "0.115.0"
+oxc_ast_visit = "0.115.0"
+oxc_parser = "0.115.0"
+oxc_resolver = "11.19.0"
+oxc_semantic = "0.115.0"
+oxc_syntax = "0.115.0"
 regex = { version = "1.11.2", features = [] }
-oxc_minifier = "0.73.0"
+oxc_minifier = "0.115.0"
 log = "0.4"
 env_logger = "0.11"
 
