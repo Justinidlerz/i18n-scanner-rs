@@ -12,7 +12,6 @@ use oxc_resolver::Resolver;
 use oxc_semantic::Semantic;
 use regex::Regex;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub struct Walker<'a> {
@@ -83,43 +82,6 @@ impl<'a> Walker<'a> {
       });
   }
 
-  fn resolve_at_alias_fallback(&self, specifier: &str) -> Option<String> {
-    let rel = specifier.strip_prefix("@/")?;
-
-    let src_root = Path::new(self.node.file_path.as_str())
-      .ancestors()
-      .find(|path| path.file_name().is_some_and(|name| name == "src"))?;
-
-    let base_candidate = src_root.join(rel);
-    let has_script_extension = base_candidate
-      .extension()
-      .and_then(|ext| ext.to_str())
-      .map(|ext| matches!(ext, "ts" | "tsx" | "js" | "jsx"))
-      .unwrap_or(false);
-
-    let mut candidates: Vec<PathBuf> = Vec::new();
-
-    if has_script_extension {
-      candidates.push(base_candidate.clone());
-    } else {
-      candidates.extend(
-        ["ts", "tsx", "js", "jsx"]
-          .iter()
-          .map(|ext| base_candidate.with_extension(ext)),
-      );
-      candidates.extend(
-        ["ts", "tsx", "js", "jsx"]
-          .iter()
-          .map(|ext| base_candidate.join(format!("index.{ext}"))),
-      );
-    }
-
-    candidates
-      .into_iter()
-      .find(|candidate| candidate.is_file())
-      .and_then(|candidate| candidate.to_str().map(|path| path.to_string()))
-  }
-
   pub fn append_reexport(&mut self, source: &StringLiteral) {
     self.reexport_all_importing.push(source.value.to_string());
   }
@@ -136,26 +98,23 @@ impl<'a> Walker<'a> {
       .iter()
       .any(|reg| reg.is_match(source.value.as_str()));
 
-    let basename = Path::new(self.node.file_path.as_str())
-      .parent()
-      .unwrap_or_else(|| Path::new("."));
-
-    if let Ok(res) = self
+    match self
       .resolver
-      .resolve(basename.to_str().unwrap(), source.value.as_str())
+      .resolve_file(self.node.file_path.as_str(), source.value.as_str())
     {
-      if let Some(path_str) = res.path().to_str() {
-        self.apply_resolved_import(source, &specifiers, path_str.to_string(), is_external);
-      } else {
-        debug!("[i18n-scanner-rs] failed to format path: {}", source.value)
+      Ok(res) => {
+        if let Some(path_str) = res.path().to_str() {
+          self.apply_resolved_import(source, &specifiers, path_str.to_string(), is_external);
+        } else {
+          debug!("[i18n-scanner-rs] failed to format path: {}", source.value)
+        }
       }
-    } else if let Some(path_str) = self.resolve_at_alias_fallback(source.value.as_str()) {
-      self.apply_resolved_import(source, &specifiers, path_str, is_external);
-    } else {
-      debug!(
-        "[i18n-scanner-rs] failed to resolve: {} in {}",
-        source.value, self.node.file_path
-      );
+      Err(err) => {
+        debug!(
+          "[i18n-scanner-rs] failed to resolve: {} in {} ({})",
+          source.value, self.node.file_path, err
+        );
+      }
     }
   }
 
@@ -360,11 +319,10 @@ impl<'a> Walker<'a> {
     let node = self.semantic.symbol_declaration(symbol_id);
 
     let spec = match node.kind() {
-      AstKind::ImportSpecifier(spec) => self
-        .semantic
-        .nodes()
-        .parent_node(node.id())
-        .and_then(|node| Some((spec.imported.name().to_string(), node))),
+      AstKind::ImportSpecifier(spec) => Some((
+        spec.imported.name().to_string(),
+        self.semantic.nodes().parent_node(node.id()),
+      )),
       _ => None,
     };
 
