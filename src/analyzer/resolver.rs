@@ -32,7 +32,17 @@ pub fn create_resolver(tsconfig_path: String) -> Resolver {
   debug!("tsconfig: {:?}", tsconfig);
 
   let r = Resolver::new(ResolveOptions {
-    extensions: vec![".ts".into(), ".tsx".into(), ".js".into(), ".jsx".into()],
+    // Resolve both source files and the ESM/CommonJS module variants emitted by bundlers.
+    extensions: vec![
+      ".ts".into(),
+      ".tsx".into(),
+      ".mts".into(),
+      ".cts".into(),
+      ".js".into(),
+      ".jsx".into(),
+      ".mjs".into(),
+      ".cjs".into(),
+    ],
     // ESM
     condition_names: vec!["import".into(), "default".into(), "module".into()],
     cwd,

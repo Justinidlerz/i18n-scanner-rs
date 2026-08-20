@@ -27,7 +27,11 @@ impl<'a> Visit<'a> for Walker<'a> {
                     self.read_object_member_t(s.local.symbol_id(), member.ns.clone());
                   }
                   I18nType::TransComp => {
-                    self.read_trans_component(s.local.symbol_id(), member.ns.clone());
+                    self.read_trans_component(
+                      s.local.symbol_id(),
+                      member.ns.clone(),
+                      member.key_prop.clone(),
+                    );
                   }
                   I18nType::TranslationComp => {
                     self.read_translation_component(s.local.symbol_id(), member.ns.clone());

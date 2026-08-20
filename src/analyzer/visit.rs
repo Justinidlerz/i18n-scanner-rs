@@ -113,6 +113,7 @@ impl<'a> Visit<'a> for Walker<'a> {
             let member = preset_member_type(name.as_str()).map(|member_type| I18nMember {
               r#type: member_type,
               ns: None,
+              key_prop: None,
             });
 
             vec![(name, member)]

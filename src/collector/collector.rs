@@ -94,7 +94,7 @@ impl Collector {
 #[cfg(test)]
 mod tests {
   use crate::analyzer::i18n_packages::{I18nPackage, Member};
-  use crate::analyzer::test_utils::make_custom_i18n_package;
+  use crate::analyzer::test_utils::{make_custom_i18n_package, test_path};
   use crate::collector::test_utils::{collect, collect_with_options};
   use crate::key_match;
   use crate::node::i18n_types::I18nType;
@@ -107,7 +107,7 @@ mod tests {
 
     println!("default {:?}", collector.get_keys("default"));
 
-    assert_eq!(collector.get_keys("default").len(), 19);
+    assert_eq!(collector.get_keys("default").len(), 23);
     assert_eq!(collector.get_keys("namespace_1").len(), 2);
     assert_eq!(collector.get_keys("namespace_2").len(), 1);
     assert_eq!(collector.get_keys("namespace_3").len(), 2);
@@ -145,7 +145,17 @@ mod tests {
     "namespace_2".into(),
     vec!["NAMESPACE_OVERRIDE"]
   );
-  key_match!(global_t, "globalT.ts".into(), vec!["GLOBAL_T"]);
+  key_match!(
+    global_t,
+    "globalT.ts".into(),
+    vec![
+      "GLOBAL_T",
+      "GLOBAL_T_FORMAT",
+      "GLOBAL_T_LABEL",
+      "GLOBAL_T_LENGTH",
+      "GLOBAL_T_REQUIRED"
+    ]
+  );
   key_match!(rename_both, "RenameBoth.tsx".into(), vec!["RENAME_BOTH"]);
   key_match!(rename_t, "RenameT.tsx".into(), vec!["RENAME_T"]);
   key_match!(
@@ -247,7 +257,8 @@ mod tests {
       members: vec![Member {
         ns: None,
         name: "useTranslation".into(),
-        r#type: I18nType::Hook
+        r#type: I18nType::Hook,
+        key_prop: None
       }]
     }],
     vec!["CUSTOM_HOOK_INLINE"]
@@ -259,7 +270,7 @@ mod tests {
     let (_, collector) = collect("custom-i18n/index.tsx".into(), Some(extend));
 
     assert_eq!(collector.i18n_namespaces.len(), 4);
-    assert_eq!(collector.get_keys("default").len(), 16);
+    assert_eq!(collector.get_keys("default").len(), 22);
     assert_eq!(collector.get_keys("namespace_1").len(), 2);
     assert_eq!(collector.get_keys("namespace_2").len(), 1);
     assert_eq!(collector.get_keys("namespace_3").len(), 2);
@@ -278,7 +289,25 @@ mod tests {
       ],
     );
 
-    assert_eq!(collector.get_keys("default").len(), 16);
+    assert_eq!(collector.get_keys("default").len(), 22);
     assert_eq!(collector.get_keys("namespace_3").len(), 2);
+  }
+
+  #[test]
+  fn collect_custom_trans_key_prop_from_absolute_package_path() {
+    let packages = vec![I18nPackage {
+      package_path: test_path("../../custom-i18n/index.ts"),
+      members: vec![Member {
+        name: "CustomTrans".into(),
+        r#type: I18nType::TransComp,
+        ns: None,
+        key_prop: Some("translationKey".into()),
+      }],
+    }];
+    let (_, collector) = collect("custom-i18n/index.tsx".into(), Some(packages));
+
+    assert!(collector
+      .get_keys("default")
+      .contains(&"CUSTOM_TRANS_KEY_PROP".to_string()));
   }
 }

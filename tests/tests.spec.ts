@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { scan } from '../index'
+import { I18nType, scan } from '../index'
 import * as path from 'node:path'
 
 const root = path.join(__dirname, './fake-project')
@@ -17,6 +17,10 @@ describe('I18n-scanner-rs', () => {
       {
         "default": [
           "GLOBAL_T",
+          "GLOBAL_T_FORMAT",
+          "GLOBAL_T_LABEL",
+          "GLOBAL_T_LENGTH",
+          "GLOBAL_T_REQUIRED",
           "HOC_COMPONENT",
           "I18N_CODE_CROSS_FILE",
           "I18N_CODE_DYNAMIC_hello",
@@ -79,7 +83,13 @@ describe('I18n-scanner-rs', () => {
     expect(sortedResult).toMatchInlineSnapshot(`
           {
             "default": [
+              "COMPILED_NAMESPACE_FALLBACK_T",
+              "COMPILED_NAMESPACE_SEQUENCE_T",
               "GLOBAL_T",
+              "GLOBAL_T_FORMAT",
+              "GLOBAL_T_LABEL",
+              "GLOBAL_T_LENGTH",
+              "GLOBAL_T_REQUIRED",
               "HOC_COMPONENT",
               "I18N_CODE_CROSS_FILE",
               "I18N_CODE_DYNAMIC_hello",
@@ -127,5 +137,27 @@ describe('I18n-scanner-rs', () => {
     expect(sortedResult).toEqual({
       default: ['ALIAS_PATH_KEY'],
     })
+  })
+
+  it('Should support an absolute custom package path and TransComp keyProp', () => {
+    const result = scan({
+      entryPaths: [path.join(root, './src/custom-i18n/index.tsx')],
+      tsconfigPath,
+      externals: ['@custom/i18n'],
+      extendI18NPackages: [
+        {
+          packagePath: path.resolve(root, '../custom-i18n/index.ts'),
+          members: [
+            {
+              name: 'CustomTrans',
+              type: I18nType.TransComp,
+              keyProp: 'translationKey',
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(result.default).toContain('CUSTOM_TRANS_KEY_PROP')
   })
 })

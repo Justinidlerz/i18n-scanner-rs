@@ -31,7 +31,7 @@ impl Analyzer {
       ),
       allocator: Allocator::default(),
       resolver: Rc::new(create_resolver(tsconfig_path)),
-      script_tester: Regex::new(r"^.+\.(ts|tsx|js|jsx)$").unwrap(),
+      script_tester: Regex::new(r"^.+\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$").unwrap(),
     }
   }
 
