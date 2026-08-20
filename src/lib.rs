@@ -65,6 +65,7 @@ pub fn scan(payload: Payload) -> HashMap<String, Vec<String>> {
 
   collector.collect_keys();
 
+  eprintln!("[i18n-scanner-rs] Returning scan result");
   collector.i18n_namespaces
 }
 

@@ -60,9 +60,14 @@ impl Collector {
       eprintln!("[i18n-scanner-rs] Minified {}", node.file_path);
 
       let semantic = SemanticBuilder::new().build(&program);
+      eprintln!(
+        "[i18n-scanner-rs] Built semantic model for {}",
+        node.file_path
+      );
       let mut walker = Walker::new(node.clone(), &semantic.semantic);
 
       walk::walk_program(&mut walker, &program);
+      eprintln!("[i18n-scanner-rs] Walked {}", node.file_path);
 
       walker.i18n_namespaces.iter().for_each(|(namespace, keys)| {
         self
@@ -73,6 +78,10 @@ impl Collector {
       });
 
       let post_keys = walker.post_collects.resolve_pending_keys(&self.node_store);
+      eprintln!(
+        "[i18n-scanner-rs] Resolved pending keys for {}",
+        node.file_path
+      );
       post_keys.iter().for_each(|(namespace, keys)| {
         self
           .i18n_namespaces
@@ -81,6 +90,7 @@ impl Collector {
           .extend(keys.iter().cloned());
       });
     }
+    eprintln!("[i18n-scanner-rs] Finished collecting keys");
     self
   }
 
