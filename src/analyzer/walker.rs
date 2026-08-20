@@ -1,5 +1,4 @@
 use crate::analyzer::i18n_packages::{is_preset_member_name, preset_member_type};
-use crate::analyzer::resolver::normalize_file_path;
 use crate::node::i18n_types::{I18nMember, I18nType};
 use crate::node::node::Node;
 use crate::node::node_store::NodeStore;
@@ -104,8 +103,8 @@ impl<'a> Walker<'a> {
       .resolve_file(self.node.file_path.as_str(), source.value.as_str())
     {
       Ok(res) => {
-        if let Some(path_str) = normalize_file_path(res.path()) {
-          self.apply_resolved_import(source, &specifiers, path_str, is_external);
+        if let Some(path_str) = res.path().to_str() {
+          self.apply_resolved_import(source, &specifiers, path_str.to_string(), is_external);
         } else {
           debug!("[i18n-scanner-rs] failed to format path: {}", source.value)
         }

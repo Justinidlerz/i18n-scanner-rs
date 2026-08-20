@@ -2,15 +2,7 @@ use log::debug;
 use oxc_resolver::{
   ResolveOptions, Resolver, TsconfigDiscovery, TsconfigOptions, TsconfigReferences,
 };
-use std::path::{Path, PathBuf};
-
-/// Keep every path entering the module graph in the same platform-specific form.
-pub(crate) fn normalize_file_path(path: &Path) -> Option<String> {
-  std::fs::canonicalize(path)
-    .unwrap_or_else(|_| path.to_path_buf())
-    .to_str()
-    .map(ToString::to_string)
-}
+use std::path::PathBuf;
 
 pub fn create_resolver(tsconfig_path: String) -> Resolver {
   debug!("tsconfig_path: {}", tsconfig_path);

@@ -1,4 +1,4 @@
-use crate::analyzer::resolver::{create_resolver, normalize_file_path};
+use crate::analyzer::resolver::create_resolver;
 use crate::analyzer::walker::Walker;
 use crate::node::node::Node;
 use crate::node::node_store::NodeStore;
@@ -9,7 +9,6 @@ use oxc_resolver::Resolver;
 use oxc_semantic::SemanticBuilder;
 use regex::Regex;
 use std::fs;
-use std::path::Path;
 use std::rc::Rc;
 
 pub struct Analyzer {
@@ -41,8 +40,6 @@ impl Analyzer {
     file_path: String,
     imports_path: Option<Rc<String>>,
   ) -> Option<Rc<Node>> {
-    let file_path = normalize_file_path(Path::new(&file_path)).unwrap_or(file_path);
-
     if let Some(existing_node) = self.node_store.get_node(&file_path) {
       if let Some(path) = imports_path {
         existing_node.insert_imports(path.clone());
