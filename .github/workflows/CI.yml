@@ -138,6 +138,12 @@ jobs:
         node:
           - '20'
           - '22'
+        exclude:
+          - settings:
+              host: windows-latest
+              target: x86_64-pc-windows-msvc
+              architecture: x64
+            node: '20'
     runs-on: ${{ matrix.settings.host }}
     steps:
       - uses: actions/checkout@v5
