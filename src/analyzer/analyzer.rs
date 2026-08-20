@@ -13,7 +13,6 @@ use std::rc::Rc;
 
 pub struct Analyzer {
   pub node_store: NodeStore,
-  allocator: Allocator,
   pub resolver: Rc<Resolver>,
   script_tester: Regex,
   externals: Rc<Vec<Regex>>,
@@ -29,7 +28,6 @@ impl Analyzer {
           .map(|pkg_name| Regex::new(&format!(r"^{}((!?\/).*)?$", pkg_name)).unwrap())
           .collect(),
       ),
-      allocator: Allocator::default(),
       resolver: Rc::new(create_resolver(tsconfig_path)),
       script_tester: Regex::new(r"^.+\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$").unwrap(),
     }
@@ -40,8 +38,6 @@ impl Analyzer {
     file_path: String,
     imports_path: Option<Rc<String>>,
   ) -> Option<Rc<Node>> {
-    eprintln!("[i18n-scanner-rs] Analyzing {file_path}");
-
     if let Some(existing_node) = self.node_store.get_node(&file_path) {
       if let Some(path) = imports_path {
         existing_node.insert_imports(path.clone());
@@ -73,8 +69,9 @@ impl Analyzer {
 
     self.node_store.insert_node(file_path_ref, node.clone());
 
+    let allocator = Allocator::default();
     let parser =
-      Parser::new(&self.allocator, &source_text, node.source_type).with_options(ParseOptions {
+      Parser::new(&allocator, &source_text, node.source_type).with_options(ParseOptions {
         // Keep scanning on files that have top-level returns in generated outputs.
         allow_return_outside_function: true,
         ..ParseOptions::default()

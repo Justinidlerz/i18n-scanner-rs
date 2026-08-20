@@ -10,7 +10,6 @@ use std::fs;
 
 pub struct Collector {
   node_store: NodeStore,
-  allocator: Allocator,
   pub i18n_namespaces: HashMap<String, Vec<String>>,
 }
 
@@ -18,7 +17,6 @@ impl Collector {
   pub fn new(nodes: NodeStore) -> Self {
     Self {
       node_store: nodes,
-      allocator: Allocator::default(),
       i18n_namespaces: HashMap::new(),
     }
   }
@@ -28,8 +26,6 @@ impl Collector {
 
     // let post_collects =
     for (_, node) in i18n_nodes.iter() {
-      eprintln!("[i18n-scanner-rs] Collecting keys from {}", node.file_path);
-
       if node.file_path.ends_with(".d.ts") {
         log::debug!(
           "[i18n-scanner-rs] skipping declaration file '{}'",
@@ -48,26 +44,20 @@ impl Collector {
           continue;
         }
       };
-      let parser = Parser::new(&self.allocator, &source_text, node.source_type);
+      let allocator = Allocator::default();
+      let parser = Parser::new(&allocator, &source_text, node.source_type);
       let mut program = parser.parse().program;
 
       Minifier::new(MinifierOptions {
         mangle: Some(MangleOptions::default()),
         compress: Some(CompressOptions::safest()),
       })
-      .minify(&self.allocator, &mut program);
-
-      eprintln!("[i18n-scanner-rs] Minified {}", node.file_path);
+      .minify(&allocator, &mut program);
 
       let semantic = SemanticBuilder::new().build(&program);
-      eprintln!(
-        "[i18n-scanner-rs] Built semantic model for {}",
-        node.file_path
-      );
       let mut walker = Walker::new(node.clone(), &semantic.semantic);
 
       walk::walk_program(&mut walker, &program);
-      eprintln!("[i18n-scanner-rs] Walked {}", node.file_path);
 
       walker.i18n_namespaces.iter().for_each(|(namespace, keys)| {
         self
@@ -78,10 +68,6 @@ impl Collector {
       });
 
       let post_keys = walker.post_collects.resolve_pending_keys(&self.node_store);
-      eprintln!(
-        "[i18n-scanner-rs] Resolved pending keys for {}",
-        node.file_path
-      );
       post_keys.iter().for_each(|(namespace, keys)| {
         self
           .i18n_namespaces
@@ -90,7 +76,6 @@ impl Collector {
           .extend(keys.iter().cloned());
       });
     }
-    eprintln!("[i18n-scanner-rs] Finished collecting keys");
     self
   }
 
