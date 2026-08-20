@@ -1,4 +1,5 @@
 use crate::analyzer::analyzer::Analyzer;
+use crate::analyzer::resolver::normalize_file_path;
 use crate::node::i18n_types::{I18nMember, I18nType};
 use crate::node::node::Node;
 use std::collections::HashSet;
@@ -60,16 +61,14 @@ impl Analyzer {
 
     // Absolute file paths should not depend on the entry file's directory.
     if raw_path.is_absolute() && raw_path.is_file() {
-      return std::fs::canonicalize(raw_path)
-        .ok()
-        .and_then(|path| path.to_str().map(ToString::to_string));
+      return normalize_file_path(raw_path);
     }
 
     self
       .resolver
       .resolve(basename, package_path)
       .ok()
-      .and_then(|resolution| resolution.path().to_str().map(ToString::to_string))
+      .and_then(|resolution| normalize_file_path(resolution.path()))
   }
 
   pub fn seed(
@@ -105,9 +104,9 @@ impl Analyzer {
     for pkg_name in PRESET_I18N_PACKAGES {
       // resolve packages and confirm it's installed
       if let Ok(res) = self.resolver.resolve(basename, pkg_name) {
-        if let Some(path_str) = res.path().to_str() {
+        if let Some(path_str) = normalize_file_path(res.path()) {
           methods.push(I18nPackage {
-            package_path: path_str.to_string(),
+            package_path: path_str,
             members: default_members(),
           })
         }
