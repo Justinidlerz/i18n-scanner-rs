@@ -40,6 +40,8 @@ impl Analyzer {
     file_path: String,
     imports_path: Option<Rc<String>>,
   ) -> Option<Rc<Node>> {
+    eprintln!("[i18n-scanner-rs] Analyzing {file_path}");
+
     if let Some(existing_node) = self.node_store.get_node(&file_path) {
       if let Some(path) = imports_path {
         existing_node.insert_imports(path.clone());

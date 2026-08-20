@@ -2,7 +2,7 @@ use crate::collector::walker::Walker;
 use crate::node::node_store::NodeStore;
 use oxc_allocator::Allocator;
 use oxc_ast_visit::walk;
-use oxc_minifier::{CompressOptions, Minifier, MinifierOptions};
+use oxc_minifier::{CompressOptions, MangleOptions, Minifier, MinifierOptions};
 use oxc_parser::Parser;
 use oxc_semantic::SemanticBuilder;
 use std::collections::HashMap;
@@ -28,6 +28,8 @@ impl Collector {
 
     // let post_collects =
     for (_, node) in i18n_nodes.iter() {
+      eprintln!("[i18n-scanner-rs] Collecting keys from {}", node.file_path);
+
       if node.file_path.ends_with(".d.ts") {
         log::debug!(
           "[i18n-scanner-rs] skipping declaration file '{}'",
@@ -50,10 +52,12 @@ impl Collector {
       let mut program = parser.parse().program;
 
       Minifier::new(MinifierOptions {
-        mangle: None,
+        mangle: Some(MangleOptions::default()),
         compress: Some(CompressOptions::safest()),
       })
       .minify(&self.allocator, &mut program);
+
+      eprintln!("[i18n-scanner-rs] Minified {}", node.file_path);
 
       let semantic = SemanticBuilder::new().build(&program);
       let mut walker = Walker::new(node.clone(), &semantic.semantic);
