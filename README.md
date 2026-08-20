@@ -54,6 +54,7 @@ export interface Member {
   name: string
   type: I18nType
   ns?: string
+  keyProp?: string
 }
 export interface I18NPackage {
   packagePath: string
@@ -77,6 +78,35 @@ export interface Payload {
 
 export declare function scan(payload: Payload): Record<string, Array<string>>
 ```
+
+### Custom key prop for `TransComp`
+
+`keyProp` only applies to members whose `type` is `I18nType.TransComp`. It configures the JSX prop that contains the translation key and defaults to `i18nKey` when omitted. The option is ignored for every other member type.
+
+```tsx
+// Custom component usage
+const example = <CustomTrans translationKey="custom.translation.key" />
+```
+
+```ts
+const payload = {
+  // ...other scan options
+  extendI18NPackages: [
+    {
+      packagePath: '/absolute/path/to/custom-i18n.ts',
+      members: [
+        {
+          name: 'CustomTrans',
+          type: I18nType.TransComp,
+          keyProp: 'translationKey',
+        },
+      ],
+    },
+  ],
+}
+```
+
+With this configuration, the scanner collects `custom.translation.key` from `translationKey`. Setting `keyProp` on `Hook`, `TMethod`, `TranslationComp`, `HocWrapper`, or `ObjectMemberT` does not change their collection behavior.
 
 ## License
 
