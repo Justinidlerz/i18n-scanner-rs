@@ -2,7 +2,7 @@ use crate::collector::walker::Walker;
 use crate::node::node_store::NodeStore;
 use oxc_allocator::Allocator;
 use oxc_ast_visit::walk;
-use oxc_minifier::{CompressOptions, MangleOptions, Minifier, MinifierOptions};
+use oxc_minifier::{CompressOptions, Minifier, MinifierOptions};
 use oxc_parser::Parser;
 use oxc_semantic::SemanticBuilder;
 use std::collections::HashMap;
@@ -50,7 +50,7 @@ impl Collector {
       let mut program = parser.parse().program;
 
       Minifier::new(MinifierOptions {
-        mangle: Some(MangleOptions::default()),
+        mangle: None,
         compress: Some(CompressOptions::safest()),
       })
       .minify(&self.allocator, &mut program);
