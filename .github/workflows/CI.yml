@@ -3,7 +3,7 @@ env:
   DEBUG: napi:*
   APP_NAME: i18n-scanner-rs
   MACOSX_DEPLOYMENT_TARGET: '10.13'
-  CARGO_INCREMENTAL: '1'
+  CARGO_INCREMENTAL: '0'
 'on':
   push:
     branches:
@@ -88,8 +88,9 @@ jobs:
             ~/.cargo/git/db/
             ~/.napi-rs
             .cargo-cache
-            target/
-          key: ${{ matrix.settings.target }}-cargo-${{ matrix.settings.host }}
+          key: ${{ matrix.settings.target }}-cargo-${{ matrix.settings.host }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ matrix.settings.target }}-cargo-${{ matrix.settings.host }}-
       - uses: mlugg/setup-zig@v2
         if: ${{ contains(matrix.settings.target, 'musl') }}
         with:
@@ -138,12 +139,6 @@ jobs:
         node:
           - '20'
           - '22'
-        exclude:
-          - settings:
-              host: windows-latest
-              target: x86_64-pc-windows-msvc
-              architecture: x64
-            node: '20'
     runs-on: ${{ matrix.settings.host }}
     steps:
       - uses: actions/checkout@v5
