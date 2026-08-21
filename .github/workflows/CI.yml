@@ -203,8 +203,7 @@ jobs:
           " >> $GITHUB_OUTPUT
       - name: Install dependencies
         run: |
-          pnpm config set --json supportedArchitectures.cpu '["current", "arm64", "x64", "arm"]'
-          pnpm config set --json supportedArchitectures.libc '["current", "musl", "gnu"]'
+          pnpm config set --json supportedArchitectures '{"cpu":["current","arm64","x64","arm"],"libc":["current","musl","gnu"]}'
           pnpm install --no-frozen-lockfile
       - name: Download artifacts
         uses: actions/download-artifact@v5
