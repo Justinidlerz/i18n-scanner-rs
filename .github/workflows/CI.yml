@@ -11,7 +11,6 @@ env:
     tags-ignore:
       - '**'
     paths-ignore:
-      - '**/*.md'
       - LICENSE
       - '**/*.gitignore'
       - .editorconfig
@@ -37,7 +36,7 @@ jobs:
         with:
           components: clippy, rustfmt
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
       - name: Oxlint
         run: pnpm lint
       - name: Cargo fmt
@@ -107,7 +106,7 @@ jobs:
         if: ${{ matrix.settings.setup }}
         shell: bash
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
       - name: Build
         run: ${{ matrix.settings.build }}
         shell: bash
@@ -150,7 +149,7 @@ jobs:
           node-version: ${{ matrix.node }}
           architecture: ${{ matrix.settings.architecture }}
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
       - name: Download artifacts
         uses: actions/download-artifact@v5
         with:
@@ -206,7 +205,7 @@ jobs:
         run: |
           pnpm config set --json supportedArchitectures.cpu '["current", "arm64", "x64", "arm"]'
           pnpm config set --json supportedArchitectures.libc '["current", "musl", "gnu"]'
-          pnpm install
+          pnpm install --no-frozen-lockfile
       - name: Download artifacts
         uses: actions/download-artifact@v5
         with:
@@ -234,6 +233,9 @@ jobs:
             npm test
   publish:
     name: Publish
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.user.login == github.repository_owner)
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -251,8 +253,12 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      - name: Install npm 12
+        run: |
+          npm install -g npm@12
+          npm --version
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
       - name: create npm dirs
         run: pnpm napi create-npm-dirs
       - name: Download all artifacts
@@ -262,24 +268,37 @@ jobs:
       - name: Move artifacts
         run: pnpm artifacts
       - name: List packages
-        run: ls -R ./npm
+        run: find ./npm -maxdepth 2 -type f -print
         shell: bash
-      - name: Update npm
-        run: npm install -g npm@latest
-      - name: Publish
+      - name: Detect changesets
+        id: changesets
+        shell: bash
+        run: |
+          # README documents the workflow and must not trigger a release by itself.
+          if find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' -print -quit | grep -q .; then
+            echo 'found=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'found=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish beta
+        if: github.event_name == 'pull_request' && steps.changesets.outputs.found == 'true'
         run: |
           npm config set provenance true
-          if git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+$";
-          then
-            # Publish stable semver tags to the default npm dist-tag.
-            npm publish --access public
-          elif git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+";
-          then
-            # Publish prerelease-like versions under the next dist-tag.
-            npm publish --tag next --access public
-          else
-            # Skip publishing when the commit message is not a release version.
-            echo "Not a release, skipping publish"
-          fi
+          # Snapshot versions include a timestamp, so every update to the PR can be published safely.
+          pnpm changeset version --snapshot beta
+          pnpm release --tag beta
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Consume changesets and publish stable package
+        if: github.event_name == 'push' && steps.changesets.outputs.found == 'true'
+        run: |
+          npm config set provenance true
+          pnpm changeset version
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .changeset CHANGELOG.md package.json pnpm-lock.yaml
+          git commit -m 'chore: release package [skip ci]'
+          pnpm release
+          git push --follow-tags
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
