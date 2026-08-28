@@ -3,7 +3,7 @@ env:
   DEBUG: napi:*
   APP_NAME: i18n-scanner-rs
   MACOSX_DEPLOYMENT_TARGET: '10.13'
-  CARGO_INCREMENTAL: '1'
+  CARGO_INCREMENTAL: '0'
 'on':
   push:
     branches:
@@ -87,8 +87,9 @@ jobs:
             ~/.cargo/git/db/
             ~/.napi-rs
             .cargo-cache
-            target/
-          key: ${{ matrix.settings.target }}-cargo-${{ matrix.settings.host }}
+          key: ${{ matrix.settings.target }}-cargo-${{ matrix.settings.host }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ matrix.settings.target }}-cargo-${{ matrix.settings.host }}-
       - uses: mlugg/setup-zig@v2
         if: ${{ contains(matrix.settings.target, 'musl') }}
         with:
@@ -202,8 +203,7 @@ jobs:
           " >> $GITHUB_OUTPUT
       - name: Install dependencies
         run: |
-          pnpm config set --json supportedArchitectures.cpu '["current", "arm64", "x64", "arm"]'
-          pnpm config set --json supportedArchitectures.libc '["current", "musl", "gnu"]'
+          pnpm config set --json supportedArchitectures '{"cpu":["current","arm64","x64","arm"],"libc":["current","musl","gnu"]}'
           pnpm install --no-frozen-lockfile
       - name: Download artifacts
         uses: actions/download-artifact@v5
@@ -252,6 +252,10 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      - name: Install npm 12
+        run: |
+          npm install -g npm@12
+          npm --version
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
       - name: create npm dirs
@@ -265,8 +269,6 @@ jobs:
       - name: List packages
         run: find ./npm -maxdepth 2 -type f -print
         shell: bash
-      - name: Update npm
-        run: npm install -g npm@latest
       - name: Detect changesets
         id: changesets
         shell: bash

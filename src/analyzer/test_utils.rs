@@ -46,6 +46,7 @@ pub fn make_extend_packages() -> Vec<I18nPackage> {
       r#type: I18nType::Hook,
       name: "useFeTranslation".to_string(),
       ns: Some("namespace_3".into()),
+      key_prop: None,
     }],
   }]
 }

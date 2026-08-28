@@ -43,6 +43,7 @@ export interface Member {
   name: string
   type: I18nType
   ns?: string
+  keyProp?: string
 }
 
 export interface Payload {

@@ -20,6 +20,8 @@ import TWithNamespace from './TWithNamespace';
 import NamespaceOverride from './NamespaceOverride';
 import { memberT } from './memberT';
 import NamespaceFromVar from './NamespaceFromVar';
+import { compiledSequenceTranslation } from './CompiledNamespaceT.mjs';
+import CustomKeyPropTrans from './CustomKeyPropTrans';
 
 init();
 
@@ -28,6 +30,8 @@ const Entry = () => {
     <>
       {memberT}
       {globalT}
+      {compiledSequenceTranslation}
+      <CustomKeyPropTrans />
       <NamespaceFromVar />
       <NamespaceOverride />
       <TWithNamespace />

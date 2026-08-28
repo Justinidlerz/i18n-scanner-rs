@@ -32,6 +32,14 @@ export function Trans(_props: TransProps) {
   return null;
 }
 
+export interface CustomTransProps {
+  translationKey: string;
+}
+
+export function CustomTrans(_props: CustomTransProps) {
+  return null;
+}
+
 export function withTranslation(_namespace?: string | string[]) {
   return function withTranslationHoc<ComponentType>(Component: ComponentType): ComponentType {
     return Component;

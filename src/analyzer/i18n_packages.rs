@@ -34,6 +34,7 @@ fn default_members() -> Vec<Member> {
       name: (*name).to_string(),
       r#type: r#type.clone(),
       ns: None,
+      key_prop: None,
     })
     .collect()
 }
@@ -44,6 +45,7 @@ pub struct Member {
   pub name: String,
   pub r#type: I18nType,
   pub ns: Option<String>,
+  pub key_prop: Option<String>,
 }
 #[derive(Clone)]
 #[napi(object)]
@@ -53,6 +55,14 @@ pub struct I18nPackage {
 }
 
 impl Analyzer {
+  fn resolve_extended_package_path(&self, basename: &Path, package_path: &str) -> Option<String> {
+    self
+      .resolver
+      .resolve(basename, package_path)
+      .ok()
+      .and_then(|resolution| resolution.path().to_str().map(ToString::to_string))
+  }
+
   pub fn seed(
     &mut self,
     entry_path: &str,
@@ -69,6 +79,7 @@ impl Analyzer {
           Some(I18nMember {
             r#type: member.r#type,
             ns: member.ns,
+            key_prop: member.key_prop,
           }),
         );
       }
@@ -109,35 +120,34 @@ impl Analyzer {
       .and_then(|packages| {
         let mut pkgs: Vec<I18nPackage> = vec![];
         for pkg in &packages {
-          if let Ok(res) = self.resolver.resolve(basename, &pkg.package_path) {
-            if let Some(path_str) = res.path().to_str() {
-              let mut members = pkg.members.clone();
-              if members.is_empty() {
-                members = default_members();
-              }
-
-              let mut registered_types: HashSet<Discriminant<I18nType>> = members
-                .iter()
-                .map(|member| discriminant_of(&member.r#type))
-                .collect();
-
-              for (name, preset_type) in PRESET_I18N_MEMBERS {
-                let preset_discriminant = discriminant_of(preset_type);
-                if !registered_types.contains(&preset_discriminant) {
-                  members.push(Member {
-                    name: (*name).to_string(),
-                    r#type: preset_type.clone(),
-                    ns: None,
-                  });
-                  registered_types.insert(preset_discriminant);
-                }
-              }
-
-              pkgs.push(I18nPackage {
-                package_path: path_str.to_string(),
-                members,
-              });
+          if let Some(path_str) = self.resolve_extended_package_path(basename, &pkg.package_path) {
+            let mut members = pkg.members.clone();
+            if members.is_empty() {
+              members = default_members();
             }
+
+            let mut registered_types: HashSet<Discriminant<I18nType>> = members
+              .iter()
+              .map(|member| discriminant_of(&member.r#type))
+              .collect();
+
+            for (name, preset_type) in PRESET_I18N_MEMBERS {
+              let preset_discriminant = discriminant_of(preset_type);
+              if !registered_types.contains(&preset_discriminant) {
+                members.push(Member {
+                  name: (*name).to_string(),
+                  r#type: preset_type.clone(),
+                  ns: None,
+                  key_prop: None,
+                });
+                registered_types.insert(preset_discriminant);
+              }
+            }
+
+            pkgs.push(I18nPackage {
+              package_path: path_str,
+              members,
+            });
           }
         }
         Some(pkgs)

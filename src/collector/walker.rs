@@ -312,9 +312,26 @@ impl<'a> Walker<'a> {
                 I18nType::TMethod => {
                   // Handle i18n.t()
                   debug!("Processing t method call: {}", prop_name);
-                  let call_node = self.semantic.nodes().parent_node(node.id());
-                  if let AstKind::CallExpression(call) = call_node.kind() {
-                    self.read_t_arguments(call, member_info.ns.clone());
+                  let mut current_node = node;
+
+                  // Bundlers commonly wrap namespace members in sequence or fallback
+                  // expressions, so follow callee-only wrappers until reaching the call.
+                  loop {
+                    let parent_node = self.semantic.nodes().parent_node(current_node.id());
+                    match parent_node.kind() {
+                      AstKind::CallExpression(call) => {
+                        self.read_t_arguments(call, member_info.ns.clone());
+                        break;
+                      }
+                      AstKind::SequenceExpression(_)
+                      | AstKind::LogicalExpression(_)
+                      | AstKind::ConditionalExpression(_)
+                      | AstKind::ParenthesizedExpression(_)
+                      | AstKind::ChainExpression(_) => {
+                        current_node = parent_node;
+                      }
+                      _ => break,
+                    }
                   }
                 }
                 _ => {}
@@ -540,7 +557,12 @@ impl<'a> Walker<'a> {
     defined_ns.unwrap_or_else(|| "default".to_string())
   }
 
-  pub fn read_trans_component(&mut self, symbol_id: SymbolId, defined_ns: Option<String>) {
+  pub fn read_trans_component(
+    &mut self,
+    symbol_id: SymbolId,
+    defined_ns: Option<String>,
+    key_prop: Option<String>,
+  ) {
     self
       .semantic
       .symbol_references(symbol_id)
@@ -550,23 +572,27 @@ impl<'a> Walker<'a> {
         if let Some(_jsx_element) = node.kind().as_jsx_element() {
           let parent_node = self.semantic.nodes().parent_node(node.id());
           if let Some(jsx_element) = parent_node.kind().as_jsx_element() {
-            self.read_trans_jsx_element(jsx_element, defined_ns.clone());
+            self.read_trans_jsx_element(jsx_element, defined_ns.clone(), key_prop.as_deref());
           } else {
             // Try to go up one more level
             let grandparent_node = self.semantic.nodes().parent_node(parent_node.id());
             if let Some(jsx_element) = grandparent_node.kind().as_jsx_element() {
-              self.read_trans_jsx_element(jsx_element, defined_ns.clone());
+              self.read_trans_jsx_element(jsx_element, defined_ns.clone(), key_prop.as_deref());
             }
           }
         } else {
           match node.kind() {
             // Handle JSX elements like <Trans i18nKey="key" />
             AstKind::JSXElement(jsx_element) => {
-              self.read_trans_jsx_element(jsx_element, defined_ns.clone());
+              self.read_trans_jsx_element(jsx_element, defined_ns.clone(), key_prop.as_deref());
             }
             // Handle JSX opening elements like <Trans i18nKey="key">
             AstKind::JSXOpeningElement(opening_element) => {
-              self.read_trans_jsx_opening_element(opening_element, defined_ns.clone());
+              self.read_trans_jsx_opening_element(
+                opening_element,
+                defined_ns.clone(),
+                key_prop.as_deref(),
+              );
             }
             _ => {}
           }
@@ -574,26 +600,43 @@ impl<'a> Walker<'a> {
       });
   }
 
-  pub fn read_trans_jsx_element(&mut self, jsx_element: &JSXElement, defined_ns: Option<String>) {
+  pub fn read_trans_jsx_element(
+    &mut self,
+    jsx_element: &JSXElement,
+    defined_ns: Option<String>,
+    key_prop: Option<&str>,
+  ) {
     let opening_element = &jsx_element.opening_element;
-    self.read_trans_jsx_opening_element(opening_element, defined_ns);
+    self.read_trans_jsx_opening_element(opening_element, defined_ns, key_prop);
   }
 
   pub fn read_trans_jsx_opening_element(
     &mut self,
     opening_element: &JSXOpeningElement,
     defined_ns: Option<String>,
+    key_prop: Option<&str>,
   ) {
-    // Look for i18nKey prop
+    let key_prop = key_prop.unwrap_or("i18nKey");
+
+    // Custom translation components may expose the translation key under another prop.
     for attribute in &opening_element.attributes {
       if let JSXAttributeItem::Attribute(attr) = attribute {
         let attr_name = &attr.name;
         if let JSXAttributeName::Identifier(ident) = attr_name {
-          if ident.name == "i18nKey" {
+          if ident.name == key_prop {
             if let Some(attr_value) = &attr.value {
-              if let JSXAttributeValue::StringLiteral(s) = attr_value {
+              let key = match attr_value {
+                JSXAttributeValue::StringLiteral(s) => Some(s.value.to_string()),
+                JSXAttributeValue::ExpressionContainer(container) => container
+                  .expression
+                  .as_expression()
+                  .and_then(|expr| self.walk_utils.read_str_expression(expr)),
+                _ => None,
+              };
+
+              if let Some(key) = key {
                 let namespace = self.resolve_jsx_namespace(opening_element, defined_ns.clone());
-                self.add_key(&namespace, s.value.to_string());
+                self.add_key(&namespace, key);
               }
             }
           }

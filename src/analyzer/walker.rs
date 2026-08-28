@@ -201,6 +201,7 @@ impl<'a> Walker<'a> {
       preset_member_type(name).map(|member_type| I18nMember {
         r#type: member_type,
         ns: None,
+        key_prop: None,
       })
     });
 
@@ -256,6 +257,7 @@ impl<'a> Walker<'a> {
           return Some(I18nMember {
             r#type: crate::node::i18n_types::I18nType::Hook,
             ns: None,
+            key_prop: None,
           });
         }
 
@@ -341,6 +343,7 @@ impl<'a> Walker<'a> {
           return Some(I18nMember {
             r#type: member.r#type.clone(),
             ns,
+            key_prop: member.key_prop.clone(),
           });
         }
         None
