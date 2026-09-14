@@ -246,6 +246,9 @@ jobs:
       - test-linux-binding
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Changesets needs the commits that introduced each changeset when generating changelogs.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         name: Install pnpm
       - name: Setup node
@@ -286,6 +289,8 @@ jobs:
           npm config set provenance true
           # Snapshot versions include a timestamp, so every update to the PR can be published safely.
           pnpm changeset version --snapshot beta
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish beta
         id: beta
         if: github.event_name == 'pull_request' && steps.changesets.outputs.found == 'true'
