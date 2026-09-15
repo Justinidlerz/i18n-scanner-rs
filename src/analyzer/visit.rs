@@ -1,13 +1,14 @@
 use super::walker::Walker;
 use crate::analyzer::i18n_packages::preset_member_type;
 use crate::node::i18n_types::I18nMember;
+use crate::node::node::ExportBinding;
 use oxc_ast::ast::{
   ArrayPattern, BindingPattern, Declaration, ExportAllDeclaration, ExportDefaultDeclaration,
-  ExportNamedDeclaration, Expression, ImportDeclaration, ImportDeclarationSpecifier,
-  ImportExpression, ModuleExportName, ObjectPattern,
+  ExportDefaultDeclarationKind, ExportNamedDeclaration, Expression, ImportDeclaration,
+  ImportDeclarationSpecifier, ImportExpression, ModuleExportName, ObjectPattern,
 };
-use oxc_ast::AstKind;
 use oxc_ast_visit::Visit;
+use std::collections::HashSet;
 
 impl<'a> Visit<'a> for Walker<'a> {
   // import('xyz')
@@ -26,13 +27,18 @@ impl<'a> Visit<'a> for Walker<'a> {
   // import xyz from './xyz'
   // import { x, y, z } from './xyz'
   fn visit_import_declaration(&mut self, it: &ImportDeclaration<'a>) {
+    if it.import_kind.is_type() {
+      return;
+    }
     let specifiers = match &it.specifiers {
       Some(specifiers) => Some(
         specifiers
           .iter()
           .filter_map(|specifier| match specifier {
             // import { foo } from 'xyz'
-            ImportDeclarationSpecifier::ImportSpecifier(s) => Some(s.imported.name().to_string()),
+            ImportDeclarationSpecifier::ImportSpecifier(s) => {
+              (!s.import_kind.is_type()).then(|| s.imported.name().to_string())
+            }
             // import * as xyz from 'xyz'
             ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => Some("*".into()),
             // import xyz from 'xyz'
@@ -54,52 +60,49 @@ impl<'a> Visit<'a> for Walker<'a> {
       return;
     }
 
-    if it.specifiers.len() > 0 {
-      // export { foo } from './xyz';
-      if let Some(source) = &it.source {
-        let specs = it
-          .specifiers
-          .iter()
-          .map(|specifier| specifier.exported.name().to_string())
-          .collect::<Vec<String>>();
-        self.resolve_import(source, specs.clone());
-      } else {
-        // export { abc };
+    self.has_exports = true;
+    if let Some(source) = &it.source {
+      let specs = it
+        .specifiers
+        .iter()
+        .filter(|s| !s.export_kind.is_type())
+        .map(|s| s.local.name().to_string())
+        .collect();
+      self.resolve_import(source, specs);
+      if self.collect_exports {
         let exports = it
           .specifiers
           .iter()
-          .map(|specifier| {
-            let exported_name = specifier.exported.name().to_string();
-
-            match &specifier.local {
-              ModuleExportName::IdentifierReference(ident) => {
-                let resolved_member = ident.reference_id.get().and_then(|reference_id| {
-                  self
-                    .walk_utils
-                    .get_var_defined_node(reference_id)
-                    .and_then(|node| match node.kind() {
-                      AstKind::VariableDeclarator(decl) => self.resolve_i18n_export(&decl),
-                      _ => None,
-                    })
-                });
-
-                if resolved_member.is_none() {
-                  log::debug!(
-                    "[i18n-scanner-rs] unable to resolve exported member '{}' in file '{}'",
-                    exported_name,
-                    self.walk_utils.node.file_path.as_str()
-                  );
-                }
-
-                (exported_name, resolved_member)
-              }
-              _ => (exported_name, None),
-            }
+          .filter(|s| !s.export_kind.is_type())
+          .map(|s| {
+            (
+              s.exported.name().to_string(),
+              ExportBinding::Imported {
+                source: source.value.to_string(),
+                name: s.local.name().to_string(),
+              },
+            )
           })
-          .collect::<Vec<(String, Option<I18nMember>)>>();
-
+          .collect();
         self.append_exports(exports);
       }
+    } else if self.collect_exports {
+      let exports = it
+        .specifiers
+        .iter()
+        .filter(|s| !s.export_kind.is_type())
+        .map(|s| {
+          let binding = match &s.local {
+            ModuleExportName::IdentifierReference(ident) => self.resolve_export_identifier(ident),
+            _ => ExportBinding::Local(None),
+          };
+          (s.exported.name().to_string(), binding)
+        })
+        .collect();
+      self.append_exports(exports);
+    }
+    if !self.collect_exports {
+      return;
     }
 
     // export const a = "xyz";
@@ -116,7 +119,7 @@ impl<'a> Visit<'a> for Walker<'a> {
               key_prop: None,
             });
 
-            vec![(name, member)]
+            vec![(name, ExportBinding::Local(member))]
           } else {
             vec![]
           }
@@ -146,18 +149,43 @@ impl<'a> Visit<'a> for Walker<'a> {
     }
   }
 
-  fn visit_export_default_declaration(&mut self, _: &ExportDefaultDeclaration<'a>) {
-    // TODO collect i18n_member the default export when it's a function
-    self.append_exports(vec![("default".into(), None)])
+  fn visit_export_default_declaration(&mut self, it: &ExportDefaultDeclaration<'a>) {
+    self.has_exports = true;
+    if !self.collect_exports {
+      return;
+    }
+    let binding = match &it.declaration {
+      ExportDefaultDeclarationKind::Identifier(ident) => self.resolve_export_identifier(ident),
+      _ => it
+        .declaration
+        .as_expression()
+        .and_then(|expr| self.resolve_export_expression(expr, &mut HashSet::new()))
+        .unwrap_or(ExportBinding::Local(None)),
+    };
+    self.append_exports(vec![("default".into(), binding)]);
   }
   // export * from './xyz';
   fn visit_export_all_declaration(&mut self, it: &ExportAllDeclaration<'a>) {
+    if it.export_kind.is_type() {
+      return;
+    }
+    self.has_exports = true;
     self.resolve_import(&it.source, vec!["*".into()]);
-    self.append_reexport(&it.source);
+    if self.collect_exports {
+      if let Some(exported) = &it.exported {
+        // A namespace export does not flatten the source module's members.
+        self.append_exports(vec![(
+          exported.name().to_string(),
+          ExportBinding::Local(None),
+        )]);
+      } else {
+        self.append_reexport(&it.source);
+      }
+    }
   }
 }
 
-fn collect_deconstructed_array_export(arr: &ArrayPattern) -> Vec<(String, Option<I18nMember>)> {
+fn collect_deconstructed_array_export(arr: &ArrayPattern) -> Vec<(String, ExportBinding)> {
   arr
     .elements
     .iter()
@@ -168,14 +196,16 @@ fn collect_deconstructed_array_export(arr: &ArrayPattern) -> Vec<(String, Option
       };
 
       match pattern {
-        BindingPattern::BindingIdentifier(ident) => Some((ident.name.to_string(), None)),
+        BindingPattern::BindingIdentifier(ident) => {
+          Some((ident.name.to_string(), ExportBinding::Local(None)))
+        }
         _ => None,
       }
     })
     .collect()
 }
 
-fn collect_deconstructed_object_export(obj: &ObjectPattern) -> Vec<(String, Option<I18nMember>)> {
+fn collect_deconstructed_object_export(obj: &ObjectPattern) -> Vec<(String, ExportBinding)> {
   if obj.properties.is_empty() {
     return vec![];
   }
@@ -187,9 +217,11 @@ fn collect_deconstructed_object_export(obj: &ObjectPattern) -> Vec<(String, Opti
       BindingPattern::ObjectPattern(obj) => {
         [collect_deconstructed_object_export(&obj), acc].concat()
       }
-      BindingPattern::BindingIdentifier(ident) => {
-        [vec![(ident.name.to_string(), None)], acc].concat()
-      }
+      BindingPattern::BindingIdentifier(ident) => [
+        vec![(ident.name.to_string(), ExportBinding::Local(None))],
+        acc,
+      ]
+      .concat(),
       _ => acc,
     })
 }

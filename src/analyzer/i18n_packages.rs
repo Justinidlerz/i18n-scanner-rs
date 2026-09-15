@@ -84,6 +84,9 @@ impl Analyzer {
         );
       }
 
+      self
+        .i18n_packages
+        .insert_node(file_path_ref.clone(), node.clone());
       self.node_store.insert_node(file_path_ref, node);
     }
 

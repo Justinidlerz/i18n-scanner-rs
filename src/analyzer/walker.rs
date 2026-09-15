@@ -1,25 +1,27 @@
 use crate::analyzer::i18n_packages::{is_preset_member_name, preset_member_type};
 use crate::node::i18n_types::{I18nMember, I18nType};
-use crate::node::node::Node;
+use crate::node::node::{ExportBinding, Node};
 use crate::node::node_store::NodeStore;
 use crate::walk_utils::WalkerUtils;
 use log::debug;
 use oxc_ast::ast::{
-  CallExpression, Expression, FunctionBody, Statement, StringLiteral, VariableDeclarator,
+  CallExpression, Expression, FunctionBody, IdentifierReference, Statement, StringLiteral,
+  VariableDeclarator,
 };
 use oxc_ast::AstKind;
 use oxc_resolver::Resolver;
 use oxc_semantic::Semantic;
+use oxc_syntax::symbol::SymbolId;
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 pub struct Walker<'a> {
   resolver: Rc<Resolver>,
+  pub collect_exports: bool,
+  pub has_exports: bool,
   node: Rc<Node>,
   externals: Rc<Vec<Regex>>,
-  // reexport all members
-  reexport_all_importing: Vec<String>,
   // { exports: [], file_paths: '' }[]
   i18n_methods: NodeStore,
   // To collect members and replace the file_path as pointer
@@ -37,11 +39,12 @@ impl<'a> Walker<'a> {
     externals: Rc<Vec<Regex>>,
   ) -> Self {
     Self {
+      collect_exports: false,
+      has_exports: false,
       externals,
       resolver,
       node: node.clone(),
       semantic,
-      reexport_all_importing: Vec::new(),
       i18n_methods,
       importing_collection: HashMap::new(),
       walk_utils: WalkerUtils::new(semantic, node),
@@ -59,17 +62,9 @@ impl<'a> Walker<'a> {
       return;
     }
 
-    if let Some(node) = self.i18n_methods.get_node(&path_str) {
-      let importing_node_members = node.get_exporting_i18n_members();
-
-      if specifiers.iter().any(|specifier| {
-        // is matched i18n methods or
-        // namespace import, no matter is reexport all or not
-        importing_node_members.contains_key(specifier) || specifier == "*"
-      }) {
-        self.node.mark_has_i18n_source_imported();
-      }
-    }
+    self
+      .node
+      .insert_importing_specifiers(source.value.to_string(), specifiers);
 
     self
       .node
@@ -83,16 +78,20 @@ impl<'a> Walker<'a> {
   }
 
   pub fn append_reexport(&mut self, source: &StringLiteral) {
-    self.reexport_all_importing.push(source.value.to_string());
+    self.node.insert_reexport_all(source.value.to_string());
   }
 
-  pub fn append_exports(&mut self, members: Vec<(String, Option<I18nMember>)>) {
+  pub fn append_exports(&mut self, members: Vec<(String, ExportBinding)>) {
     for (name, i18n_member) in members {
-      self.node.insert_exporting(name, i18n_member);
+      self.node.insert_export_binding(name, i18n_member);
     }
   }
 
   pub fn resolve_import(&mut self, source: &StringLiteral, specifiers: Vec<String>) {
+    // Export resolution reads the completed graph; it must not rebuild its edges.
+    if self.collect_exports {
+      return;
+    }
     let is_external = self
       .externals
       .iter()
@@ -190,165 +189,163 @@ impl<'a> Walker<'a> {
     false
   }
 
-  pub fn resolve_i18n_export(&self, de: &VariableDeclarator) -> Option<I18nMember> {
-    let export_name = de
-      .id
-      .get_binding_identifier()
-      .map(|ident| ident.name.to_string());
+  pub fn resolve_i18n_export(&self, de: &VariableDeclarator) -> ExportBinding {
+    self.resolve_variable_export(de, &mut HashSet::new())
+  }
 
-    // Fallback to preset member types when the export name matches known i18n members.
-    let fallback_member = export_name.as_ref().and_then(|name| {
-      preset_member_type(name).map(|member_type| I18nMember {
-        r#type: member_type,
+  fn resolve_variable_export(
+    &self,
+    de: &VariableDeclarator,
+    visiting: &mut HashSet<SymbolId>,
+  ) -> ExportBinding {
+    let fallback = de.id.get_binding_identifier().and_then(|ident| {
+      preset_member_type(ident.name.as_str()).map(|r#type| I18nMember {
+        r#type,
         ns: None,
         key_prop: None,
       })
     });
-
-    // import should before export, and it should import i18n source
-    if !self.node.has_i18n_source_imported() {
-      return fallback_member.clone();
-    }
     let Some(init) = &de.init else {
-      return fallback_member;
+      return ExportBinding::Local(fallback);
     };
-
-    let resolve_expression_fn = |state: &Statement| -> Option<I18nMember> {
-      let Statement::ExpressionStatement(exp) = state else {
-        return None;
-      };
-      let Expression::CallExpression(call) = &exp.expression else {
-        return None;
-      };
-
-      self.resolve_call_i18n_method(call)
-    };
-
-    let resolve_return_fn = |state: &Statement| -> Option<I18nMember> {
-      let Statement::ReturnStatement(ret) = state else {
-        return None;
-      };
-      let Some(argument) = &ret.argument else {
-        return None;
-      };
-      let Expression::CallExpression(call) = argument else {
-        return None;
-      };
-      self.resolve_call_i18n_method(call)
-    };
-
-    let member = match &init {
+    let resolved = match init {
       Expression::ArrowFunctionExpression(func) => {
-        // Handle arrow functions that might be custom i18n hooks
-
-        // Single statement case
         if func.body.statements.len() == 1 {
-          // const fn = () => useTranslation("abc");
-          if func.expression {
-            return resolve_expression_fn(&func.body.statements[0]);
-          }
-          return resolve_return_fn(&func.body.statements[0]);
-        }
-
-        // Multi-statement case - check if this function uses useTranslation
-        // and returns a t() call, making it a custom i18n hook
-        if self.is_custom_i18n_hook_function(&func.body) {
-          // This is a custom i18n hook, mark it as such
-          return Some(I18nMember {
-            r#type: crate::node::i18n_types::I18nType::Hook,
+          self.resolve_wrapper_statement(&func.body.statements[0], visiting)
+        } else if self.is_custom_i18n_hook_function(&func.body) {
+          Some(ExportBinding::Local(Some(I18nMember {
+            r#type: I18nType::Hook,
             ns: None,
             key_prop: None,
-          });
+          })))
+        } else {
+          None
         }
-
-        None
       }
-      // const a = function () {}
-      Expression::FunctionExpression(func) => {
-        // Nothing implemented
-        let Some(body) = &func.body else {
-          return None;
-        };
-        // TODO: handle other cases
-        if body.statements.len() != 1 {
-          return None;
-        };
-
-        if func.is_expression() {
-          return self.resolve_expression_fn(&body.statements[0]);
+      Expression::FunctionExpression(func) => func.body.as_ref().and_then(|body| {
+        if body.statements.len() == 1 {
+          self.resolve_wrapper_statement(&body.statements[0], visiting)
+        } else {
+          None
         }
-        resolve_return_fn(&body.statements[0])
-      }
-      _ => None,
+      }),
+      _ => self.resolve_export_expression(init, visiting),
     };
-
-    member.or_else(|| fallback_member.clone())
+    resolved.unwrap_or(ExportBinding::Local(fallback))
   }
 
-  pub fn resolve_expression_fn(&self, state: &Statement) -> Option<I18nMember> {
-    let Statement::ExpressionStatement(exp) = state else {
+  fn resolve_wrapper_statement(
+    &self,
+    statement: &Statement,
+    visiting: &mut HashSet<SymbolId>,
+  ) -> Option<ExportBinding> {
+    let expression = match statement {
+      Statement::ExpressionStatement(statement) => &statement.expression,
+      Statement::ReturnStatement(statement) => statement.argument.as_ref()?,
+      _ => return None,
+    };
+    let Expression::CallExpression(call) = expression else {
       return None;
     };
-    let Expression::CallExpression(call) = &exp.expression else {
-      return None;
-    };
-    self.resolve_call_i18n_method(call)
+    self.resolve_call_i18n_method(call, visiting)
   }
 
-  pub fn resolve_call_i18n_method(&self, call_exp: &CallExpression) -> Option<I18nMember> {
-    let Expression::Identifier(id) = &call_exp.callee else {
-      return None;
-    };
+  pub fn resolve_export_identifier(&self, ident: &IdentifierReference) -> ExportBinding {
+    self
+      .resolve_identifier(ident, &mut HashSet::new())
+      .unwrap_or(ExportBinding::Local(None))
+  }
 
-    let Some(reference_id) = id.reference_id.get() else {
-      // Some invalid/unsupported syntax paths may not bind a reference id.
-      log::debug!(
-        "[i18n-scanner-rs] Missing reference id while resolving call expression in {}",
-        self.node.file_path
-      );
+  fn resolve_identifier(
+    &self,
+    ident: &IdentifierReference,
+    visiting: &mut HashSet<SymbolId>,
+  ) -> Option<ExportBinding> {
+    let reference_id = ident.reference_id.get()?;
+    let symbol_id = self
+      .semantic
+      .scoping()
+      .get_reference(reference_id)
+      .symbol_id()?;
+    if !visiting.insert(symbol_id) {
       return None;
-    };
-    let r#ref = self.semantic.scoping().get_reference(reference_id);
-
-    let Some(symbol_id) = r#ref.symbol_id() else {
-      // Keep scanning instead of panicking so we can report the problematic file path.
-      log::debug!(
-        "[i18n-scanner-rs] Missing symbol id while resolving call expression in {}",
-        self.node.file_path
-      );
-      return None;
-    };
+    }
     let node = self.semantic.symbol_declaration(symbol_id);
-
-    let spec = match node.kind() {
-      AstKind::ImportSpecifier(spec) => Some((
-        spec.imported.name().to_string(),
-        self.semantic.nodes().parent_node(node.id()),
-      )),
+    let imported = match node.kind() {
+      AstKind::ImportSpecifier(spec) => Some(spec.imported.name().to_string()),
+      AstKind::ImportDefaultSpecifier(_) => Some("default".into()),
       _ => None,
     };
-
-    let member = spec
-      .and_then(|(spec, ast_node)| match ast_node.kind() {
-        AstKind::ImportDeclaration(decl) => self
-          .node
-          .get_importing_node(&decl.source.value.to_string())
-          .and_then(|node| Some((spec, node))),
+    let result = if let Some(name) = imported {
+      match self.semantic.nodes().parent_node(node.id()).kind() {
+        AstKind::ImportDeclaration(decl) => Some(ExportBinding::Imported {
+          source: decl.source.value.to_string(),
+          name,
+        }),
         _ => None,
-      })
-      .and_then(|(spec, node)| {
-        let members = node.get_exporting_i18n_members();
-        if let Some(member) = members.get(&spec) {
-          let ns = self.walk_utils.read_hook_namespace_argument(&call_exp);
-          return Some(I18nMember {
-            r#type: member.r#type.clone(),
-            ns,
-            key_prop: member.key_prop.clone(),
-          });
-        }
-        None
-      });
+      }
+    } else {
+      match node.kind() {
+        AstKind::VariableDeclarator(decl) => Some(ExportBinding::LocalAlias {
+          name: decl.id.get_binding_identifier()?.name.to_string(),
+          binding: Box::new(self.resolve_variable_export(decl, visiting)),
+        }),
+        AstKind::Function(func) => func.id.as_ref().and_then(|id| {
+          preset_member_type(id.name.as_str()).map(|r#type| ExportBinding::LocalAlias {
+            name: id.name.to_string(),
+            binding: Box::new(ExportBinding::Local(Some(I18nMember {
+              r#type,
+              ns: None,
+              key_prop: None,
+            }))),
+          })
+        }),
+        _ => None,
+      }
+    };
+    visiting.remove(&symbol_id);
+    result
+  }
 
-    member
+  pub fn resolve_export_expression(
+    &self,
+    expression: &Expression,
+    visiting: &mut HashSet<SymbolId>,
+  ) -> Option<ExportBinding> {
+    match expression {
+      Expression::Identifier(ident) => self.resolve_identifier(ident, visiting),
+      Expression::StaticMemberExpression(member) => {
+        let Expression::Identifier(ident) = &member.object else {
+          return None;
+        };
+        let node = self
+          .walk_utils
+          .get_var_defined_node(ident.reference_id.get()?)?;
+        if !matches!(node.kind(), AstKind::ImportNamespaceSpecifier(_)) {
+          return None;
+        }
+        let AstKind::ImportDeclaration(decl) = self.semantic.nodes().parent_node(node.id()).kind()
+        else {
+          return None;
+        };
+        Some(ExportBinding::Imported {
+          source: decl.source.value.to_string(),
+          name: member.property.name.to_string(),
+        })
+      }
+      _ => None,
+    }
+  }
+
+  fn resolve_call_i18n_method(
+    &self,
+    call: &CallExpression,
+    visiting: &mut HashSet<SymbolId>,
+  ) -> Option<ExportBinding> {
+    let callee = self.resolve_export_expression(&call.callee, visiting)?;
+    Some(ExportBinding::Wrapper {
+      callee: Box::new(callee),
+      ns: self.walk_utils.read_hook_namespace_argument(call),
+    })
   }
 }

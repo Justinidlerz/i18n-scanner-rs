@@ -4,12 +4,11 @@ use crate::node::i18n_types::{I18nMember, I18nType};
 use crate::node::node::Node;
 use crate::walk_utils::WalkerUtils;
 use log::debug;
-use oxc_allocator::Box as OxcBox;
 use oxc_ast::ast::{
   ArrayPattern, BinaryExpression, BinaryOperator, BindingPattern, CallExpression, Expression,
-  IdentifierReference, ImportSpecifier, JSXAttributeItem, JSXAttributeName, JSXAttributeValue,
-  JSXChild, JSXElement, JSXExpression, JSXFragment, JSXOpeningElement, ObjectPropertyKind,
-  PropertyKey, SourceType, Statement, VariableDeclarator,
+  IdentifierReference, JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement,
+  JSXExpression, JSXFragment, JSXOpeningElement, ObjectPropertyKind, PropertyKey, SourceType,
+  Statement, VariableDeclarator,
 };
 use oxc_ast::AstKind;
 use oxc_semantic::{AstNode, Semantic};
@@ -181,15 +180,14 @@ impl<'a> Walker<'a> {
 
   pub fn read_hook(
     &mut self,
-    s: &OxcBox<ImportSpecifier>,
+    local_symbol_id: SymbolId,
+    export_name: &str,
     defined_ns: Option<String>,
     members: &HashMap<String, Option<I18nMember>>,
   ) {
-    let local_symbol_id = s.local.symbol_id();
-
     let translation_names = Self::collect_t_member_names(members);
     self.register_translation_names(translation_names.iter().cloned());
-    let is_standard_hook = self.is_standard_hook_export(s.imported.name().as_str());
+    let is_standard_hook = self.is_standard_hook_export(export_name);
     let mut visited_symbols = HashSet::new();
     self.process_hook_symbol_references(
       local_symbol_id,

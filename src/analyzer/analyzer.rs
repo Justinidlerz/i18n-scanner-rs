@@ -14,6 +14,8 @@ use std::rc::Rc;
 pub struct Analyzer {
   pub node_store: NodeStore,
   pub resolver: Rc<Resolver>,
+  pub(super) i18n_packages: NodeStore,
+  exporting_files: Vec<Rc<Node>>,
   script_tester: Regex,
   externals: Rc<Vec<Regex>>,
 }
@@ -21,7 +23,9 @@ pub struct Analyzer {
 impl Analyzer {
   pub fn new(all_nodes: NodeStore, tsconfig_path: String, externals: Vec<String>) -> Self {
     Self {
+      exporting_files: Vec::new(),
       node_store: all_nodes,
+      i18n_packages: NodeStore::default(),
       externals: Rc::new(
         externals
           .iter()
@@ -38,6 +42,41 @@ impl Analyzer {
     file_path: String,
     imports_path: Option<Rc<String>>,
   ) -> Option<Rc<Node>> {
+    let node = self.analyze_module(file_path, imports_path);
+    // Namespace/string helpers may follow imports, so exports must also be walked
+    // only after all import edges exist, independently of the discovery order.
+    for node in std::mem::take(&mut self.exporting_files) {
+      let Ok(source) = fs::read_to_string(node.file_path.as_str()) else {
+        continue;
+      };
+      let allocator = Allocator::default();
+      let program = Parser::new(&allocator, &source, node.source_type)
+        .with_options(ParseOptions {
+          allow_return_outside_function: true,
+          ..ParseOptions::default()
+        })
+        .parse()
+        .program;
+      let semantic = SemanticBuilder::new().build(&program);
+      let mut walker = Walker::new(
+        self.resolver.clone(),
+        node,
+        self.i18n_packages.clone(),
+        &semantic.semantic,
+        self.externals.clone(),
+      );
+      walker.collect_exports = true;
+      walk::walk_program(&mut walker, &program);
+    }
+    self.node_store.resolve_exports();
+    node
+  }
+
+  fn analyze_module(
+    &mut self,
+    file_path: String,
+    imports_path: Option<Rc<String>>,
+  ) -> Option<Rc<Node>> {
     if let Some(existing_node) = self.node_store.get_node(&file_path) {
       if let Some(path) = imports_path {
         existing_node.insert_imports(path.clone());
@@ -50,7 +89,7 @@ impl Analyzer {
 
     let file_path_ref = Rc::new(file_path);
     let node = Rc::new(Node::new(file_path_ref.clone(), self.node_store.clone()));
-    let i18n_nodes = NodeStore::new(self.node_store.get_i18n_exported_nodes());
+    let i18n_nodes = self.i18n_packages.clone();
 
     if let Some(path) = imports_path {
       node.insert_imports(path.clone());
@@ -107,13 +146,13 @@ impl Analyzer {
 
     walk::walk_program(&mut walker, &program);
 
-    for (source, path) in walker.get_importing_collection().iter() {
-      if let Some(new_node) = self.analyze(path.to_string(), Some(node.file_path.clone())) {
-        node.insert_importing(source.to_string(), new_node.file_path.clone());
+    if walker.has_exports {
+      self.exporting_files.push(node.clone());
+    }
 
-        if new_node.has_exported_i18n_methods() {
-          node.mark_has_i18n_source_imported();
-        }
+    for (source, path) in walker.get_importing_collection().iter() {
+      if let Some(new_node) = self.analyze_module(path.to_string(), Some(node.file_path.clone())) {
+        node.insert_importing(source.to_string(), new_node.file_path.clone());
       }
     }
 
