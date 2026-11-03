@@ -303,10 +303,12 @@ jobs:
       - name: Verify published beta packages
         id: verify-beta
         if: github.event_name == 'pull_request' && steps.beta.outputs.published == 'true'
-        timeout-minutes: 5
+        # npm publish-time scanning can delay registry availability by 15 minutes or more.
+        timeout-minutes: 22
         uses: actions/github-script@v9
         env:
           PUBLISHED_PACKAGES: ${{ steps.beta.outputs.publishedPackages }}
+          NPM_VERIFY_TIMEOUT_SECONDS: '1200'
         with:
           script: |
             const packages = JSON.parse(process.env.PUBLISHED_PACKAGES);
@@ -332,16 +334,25 @@ jobs:
               'E404', 'ETARGET', 'E408', 'E429', 'E500', 'E502', 'E503', 'E504',
               'ECONNRESET', 'ETIMEDOUT', 'ESOCKETTIMEDOUT', 'EAI_AGAIN',
             ]);
-            const maxAttempts = 6;
+            const timeoutMs = Number(process.env.NPM_VERIFY_TIMEOUT_SECONDS) * 1000;
+            if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+              throw new Error('NPM_VERIFY_TIMEOUT_SECONDS must be a positive number');
+            }
+            // Use one deadline for all packages, including requests and backoff delays.
+            const deadline = Date.now() + timeoutMs;
             for (const { name, version } of publishedPackages) {
               for (let attempt = 1; ; attempt++) {
+                const remainingMs = deadline - Date.now();
+                if (remainingMs <= 0) {
+                  throw new Error(`Registry verification timed out after ${timeoutMs / 1000}s while waiting for ${name}@${version}`);
+                }
                 try {
                   const result = JSON.parse(execFileSync('npm', [
                     'view', `${name}@${version}`, 'version', '--json',
                     '--prefer-online', '--fetch-retries=0', ...registryArgs,
                   ], {
                     encoding: 'utf8',
-                    timeout: 15000,
+                    timeout: Math.min(15000, remainingMs),
                     stdio: ['ignore', 'pipe', 'pipe'],
                   }));
                   // npm 12 wraps scalar JSON results in an array; older npm returns a string.
@@ -358,11 +369,11 @@ jobs:
                   } catch {
                     // Preserve the process error when npm did not return JSON diagnostics.
                   }
-                  if (!retryableCodes.has(code) || attempt === maxAttempts) {
+                  if (!retryableCodes.has(code) || Date.now() >= deadline) {
                     throw new Error(`Cannot verify ${name}@${version} after ${attempt} attempt(s): ${error.message}`, { cause: error });
                   }
-                  const waitMs = Math.min(2000 * 2 ** (attempt - 1), 15000);
-                  core.warning(`Registry lookup for ${name}@${version} failed (${code}); retrying in ${waitMs}ms (${attempt}/${maxAttempts}).`);
+                  const waitMs = Math.max(0, Math.min(2000 * 2 ** (attempt - 1), 30000, deadline - Date.now()));
+                  core.warning(`Registry lookup for ${name}@${version} failed (${code}); retrying in ${waitMs}ms after attempt ${attempt}.`);
                   await delay(waitMs);
                 }
               }
