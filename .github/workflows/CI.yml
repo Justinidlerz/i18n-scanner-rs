@@ -300,8 +300,10 @@ jobs:
           createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Comment beta versions on PR
+      - name: Verify published beta packages
+        id: verify-beta
         if: github.event_name == 'pull_request' && steps.beta.outputs.published == 'true'
+        timeout-minutes: 5
         uses: actions/github-script@v9
         env:
           PUBLISHED_PACKAGES: ${{ steps.beta.outputs.publishedPackages }}
@@ -310,6 +312,71 @@ jobs:
             const packages = JSON.parse(process.env.PUBLISHED_PACKAGES);
             if (packages.length === 0) return;
 
+            // N-API publishes platform packages inside prepublishOnly, outside Changesets' package list.
+            const { readFileSync, readdirSync } = require('node:fs');
+            const { execFileSync } = require('node:child_process');
+            const { setTimeout: delay } = require('node:timers/promises');
+            const rootPackage = JSON.parse(readFileSync('package.json', 'utf8'));
+            for (const directory of readdirSync('npm', { withFileTypes: true })) {
+              if (!directory.isDirectory()) continue;
+              const candidate = JSON.parse(readFileSync(`npm/${directory.name}/package.json`, 'utf8'));
+              if (!candidate.private && rootPackage.optionalDependencies?.[candidate.name] === candidate.version) {
+                packages.push({ name: candidate.name, version: candidate.version });
+              }
+            }
+            const publishedPackages = [...new Map(packages.map(pkg => [`${pkg.name}@${pkg.version}`, pkg])).values()];
+            const registryArgs = rootPackage.publishConfig?.registry
+              ? ['--registry', rootPackage.publishConfig.registry]
+              : [];
+            const retryableCodes = new Set([
+              'E404', 'ETARGET', 'E408', 'E429', 'E500', 'E502', 'E503', 'E504',
+              'ECONNRESET', 'ETIMEDOUT', 'ESOCKETTIMEDOUT', 'EAI_AGAIN',
+            ]);
+            const maxAttempts = 6;
+            for (const { name, version } of publishedPackages) {
+              for (let attempt = 1; ; attempt++) {
+                try {
+                  const result = JSON.parse(execFileSync('npm', [
+                    'view', `${name}@${version}`, 'version', '--json',
+                    '--prefer-online', '--fetch-retries=0', ...registryArgs,
+                  ], {
+                    encoding: 'utf8',
+                    timeout: 15000,
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                  }));
+                  // npm 12 wraps scalar JSON results in an array; older npm returns a string.
+                  const versions = Array.isArray(result) ? result : [result];
+                  if (versions.length !== 1 || versions[0] !== version) {
+                    throw new Error(`Unexpected registry version for ${name}@${version}: ${JSON.stringify(result)}`);
+                  }
+                  core.info(`Verified ${name}@${version}`);
+                  break;
+                } catch (error) {
+                  let code = error.code;
+                  try {
+                    code = JSON.parse(error.stdout?.toString() || '{}').error?.code || code;
+                  } catch {
+                    // Preserve the process error when npm did not return JSON diagnostics.
+                  }
+                  if (!retryableCodes.has(code) || attempt === maxAttempts) {
+                    throw new Error(`Cannot verify ${name}@${version} after ${attempt} attempt(s): ${error.message}`, { cause: error });
+                  }
+                  const waitMs = Math.min(2000 * 2 ** (attempt - 1), 15000);
+                  core.warning(`Registry lookup for ${name}@${version} failed (${code}); retrying in ${waitMs}ms (${attempt}/${maxAttempts}).`);
+                  await delay(waitMs);
+                }
+              }
+            }
+            core.setOutput('packages', JSON.stringify(publishedPackages));
+      - name: Comment beta versions on PR
+        if: github.event_name == 'pull_request' && steps.verify-beta.outputs.packages != ''
+        uses: actions/github-script@v9
+        env:
+          VERIFIED_PACKAGES: ${{ steps.verify-beta.outputs.packages }}
+        with:
+          retries: 3
+          script: |
+            const publishedPackages = JSON.parse(process.env.VERIFIED_PACKAGES);
             const issue_number = context.payload.pull_request.number;
             const head = context.payload.pull_request.head.sha;
             const { data: pullRequest } = await github.rest.pulls.get({
@@ -320,25 +387,6 @@ jobs:
             if (pullRequest.head.sha !== head) {
               core.info('Skipping beta comment because the PR head has changed.');
               return;
-            }
-
-            // N-API publishes platform packages inside prepublishOnly, outside Changesets' package list.
-            const { readFileSync, readdirSync } = require('node:fs');
-            const { execFileSync } = require('node:child_process');
-            const rootPackage = JSON.parse(readFileSync('package.json', 'utf8'));
-            for (const directory of readdirSync('npm', { withFileTypes: true })) {
-              if (!directory.isDirectory()) continue;
-              const candidate = JSON.parse(readFileSync(`npm/${directory.name}/package.json`, 'utf8'));
-              if (!candidate.private && rootPackage.optionalDependencies?.[candidate.name] === candidate.version) {
-                packages.push({ name: candidate.name, version: candidate.version });
-              }
-            }
-            const publishedPackages = [...new Map(packages.map(pkg => [`${pkg.name}@${pkg.version}`, pkg])).values()];
-            for (const { name, version } of publishedPackages) {
-              const publishedVersion = JSON.parse(execFileSync('npm', ['view', `${name}@${version}`, 'version', '--json'], {
-                encoding: 'utf8',
-              }));
-              if (publishedVersion !== version) throw new Error(`Cannot verify published package ${name}@${version}`);
             }
 
             const marker = '<!-- changesets-beta-release -->';
