@@ -5,8 +5,10 @@ use oxc_ast_visit::walk;
 use oxc_minifier::{CompressOptions, MangleOptions, Minifier, MinifierOptions};
 use oxc_parser::Parser;
 use oxc_semantic::SemanticBuilder;
+use oxc_transformer::{JsxOptions, TransformOptions, Transformer, TypeScriptOptions};
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 
 pub struct Collector {
   node_store: NodeStore,
@@ -47,6 +49,32 @@ impl Collector {
       let allocator = Allocator::default();
       let parser = Parser::new(&allocator, &source_text, node.source_type);
       let mut program = parser.parse().program;
+
+      if node.source_type.is_typescript() {
+        // The minifier expects runtime syntax. Lower TypeScript before compression,
+        // but preserve JSX and value imports used by the collector and NodeStore.
+        let scoping = SemanticBuilder::new()
+          .build(&program)
+          .semantic
+          .into_scoping();
+        let options = TransformOptions {
+          typescript: TypeScriptOptions {
+            only_remove_type_imports: true,
+            ..TypeScriptOptions::default()
+          },
+          jsx: JsxOptions::disable(),
+          ..TransformOptions::default()
+        };
+        let transformed =
+          Transformer::new(&allocator, Path::new(node.file_path.as_str()), &options)
+            .build_with_scoping(scoping, &mut program);
+        for error in &transformed.errors {
+          log::warn!(
+            "[i18n-scanner-rs] TypeScript transform diagnostic for {}: {error}",
+            node.file_path
+          );
+        }
+      }
 
       Minifier::new(MinifierOptions {
         mangle: Some(MangleOptions::default()),
