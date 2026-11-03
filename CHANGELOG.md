@@ -1,5 +1,11 @@
 # @i18n-scanner-rs/main
 
+## 0.3.2
+
+### Patch Changes
+
+- 2cf4fb0: Fix native scanner crashes caused by TypeScript declarations inside function bodies by transforming TypeScript before minification. Preserve JSX-based key extraction, value imports, and the existing dependency analysis.
+
 ## 0.3.1
 
 ### Patch Changes
